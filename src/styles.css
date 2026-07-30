@@ -48,6 +48,9 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
+  /* vh first: a browser without dvh support drops the declaration entirely,
+     and an .app with no height at all collapses the whole instrument. */
+  height: 100vh;
   height: 100dvh;
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
     env(safe-area-inset-bottom) env(safe-area-inset-left);
@@ -398,6 +401,7 @@ body {
 
 .sheet {
   width: min(520px, 100%);
+  max-height: 88vh;
   max-height: 88dvh;
   overflow-y: auto;
   padding: 10px 22px calc(26px + env(safe-area-inset-bottom));

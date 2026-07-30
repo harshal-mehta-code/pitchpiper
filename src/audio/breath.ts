@@ -83,6 +83,36 @@ const ABSOLUTE_MIN = 0.00012
 
 const CALIBRATION_MS = 900
 
+/**
+ * Grace period after the microphone starts or unmutes, during which the gate
+ * stays shut.
+ *
+ * A freshly opened capture track delivers a burst of nonsense in its first
+ * frames — filters settling, gain ramping, a click as the route changes. That
+ * burst is loud and broadband, which is precisely what breath looks like, so
+ * without this the pipe retriggers itself the instant it re-arms and loops
+ * forever. Happens on every platform; it is simply most destructive where
+ * re-arming means acquiring the device again.
+ */
+const ARM_SETTLE_MS = 260
+
+/**
+ * Apple's mobile platforms, however the browser is badged.
+ *
+ * Every browser on iOS and iPadOS is WebKit underneath, so this is a platform
+ * test rather than a browser test. It exists for exactly one reason: those
+ * platforms drop playback volume for as long as a capture track is live, and
+ * no web API can override the output port. Feature detection would be
+ * preferable and isn't available — `navigator.audioSession` only appears in
+ * Safari 17, while the routing behaviour goes back much further.
+ */
+function isAppleMobile(): boolean {
+  const ua = navigator.userAgent
+  if (/iPhone|iPad|iPod/.test(ua)) return true
+  // iPadOS 13+ reports itself as a Mac; touch points give it away.
+  return /Macintosh/.test(ua) && navigator.maxTouchPoints > 1
+}
+
 export class BreathDetector {
   private stream: MediaStream | null = null
   private ctx: AudioContext | null = null
@@ -99,6 +129,15 @@ export class BreathDetector {
   private calibrationSamples: number[] = []
   private calibrationUntil = 0
   private calibrated = false
+  private paused = false
+  private armedAt = 0
+  /**
+   * Whether pausing should fully release the microphone or merely mute it.
+   * Resolved once, from platform capability rather than a guess — see
+   * `resolveReleaseStrategy`.
+   */
+  private hardRelease = false
+  private strategyResolved = false
 
   /** User-facing sensitivity, 0..1. Higher = easier to trigger. */
   sensitivity = 0.65
@@ -212,6 +251,9 @@ export class BreathDetector {
 
     this.smoothed = 0
     this.gateOpen = false
+    this.paused = false
+    this.armedAt = performance.now()
+    void this.resolveReleaseStrategy()
     if (this.calibrated) {
       // Re-arming between puffs. The room has not changed in the last two
       // seconds, and making someone wait through a fresh measurement before
@@ -251,9 +293,70 @@ export class BreathDetector {
     this.stream?.getTracks().forEach((t) => t.stop())
     this.stream = null
     this.gateOpen = false
+    this.paused = false
     // Back to playback-only, so the ringer switch stops mattering again.
     setAudioSessionType('playback')
     this.setStatus('idle')
+  }
+
+  /**
+   * Decide how to pause between notes.
+   *
+   * Two platforms want opposite things. Apple's mobile browsers hold playback
+   * quiet for as long as a capture track is live, so the track has to go away
+   * entirely. Firefox, meanwhile, grants microphone access for one use unless
+   * the person ticked "Remember", so re-acquiring can raise a fresh permission
+   * prompt — once per puff would be intolerable.
+   *
+   * So: release fully where an open microphone actually costs something, or
+   * where the browser can confirm the grant is persistent and re-acquiring is
+   * therefore silent. Otherwise keep the track and just mute it, which is
+   * instant everywhere and can never prompt.
+   */
+  private async resolveReleaseStrategy() {
+    if (this.strategyResolved) return
+    this.strategyResolved = true
+
+    if (isAppleMobile()) {
+      this.hardRelease = true
+      return
+    }
+    try {
+      const status = await navigator.permissions?.query({
+        name: 'microphone' as PermissionName,
+      })
+      this.hardRelease = status?.state === 'granted'
+    } catch {
+      // Firefox has historically thrown for the microphone permission name.
+      // Not knowing means not risking a prompt.
+      this.hardRelease = false
+    }
+  }
+
+  /**
+   * Stop listening while a note sounds, by whichever route this platform
+   * needs. Muting still stops the analysis, so a ringing pipe can never be
+   * mistaken for a breath.
+   */
+  pause() {
+    if (this.hardRelease) {
+      this.stop()
+      return
+    }
+    this.paused = true
+    this.stream?.getTracks().forEach((t) => (t.enabled = false))
+  }
+
+  /** Start listening again after a note. Safe to call when already live. */
+  resume(context: AudioContext) {
+    if (this.stream && this.paused) {
+      this.paused = false
+      this.armedAt = performance.now()
+      this.stream.getTracks().forEach((t) => (t.enabled = true))
+      this.setStatus('listening')
+      return
+    }
+    if (!this.stream) void this.start(context)
   }
 
   /** Re-measure the room. Worth doing when you move to a noisier hall. */
@@ -269,6 +372,11 @@ export class BreathDetector {
     this.raf = requestAnimationFrame(this.loop)
     const analyser = this.analyser
     if (!analyser || !this.ctx) return
+    // Muted between notes. Bailing out before anything is measured matters:
+    // a muted track delivers digital silence, and letting the room tracker
+    // see that would drag the noise floor to nothing and leave the gate on a
+    // hair trigger the moment we unmute.
+    if (this.paused) return
 
     analyser.getFloatTimeDomainData(this.timeBuf)
     analyser.getFloatFrequencyData(this.freqBuf)
@@ -324,6 +432,18 @@ export class BreathDetector {
 
     // --- gate ------------------------------------------------------------
     const threshold = this.threshold()
+    if (now - this.armedAt < ARM_SETTLE_MS) {
+      this.gateOpen = false
+      this.smoothed = 0
+      this.onFrame({
+        pressure: 0,
+        energy,
+        noisiness,
+        blowing: false,
+        threshold,
+      })
+      return
+    }
     // Turning sensitivity up relaxes what counts as breath as well as how
     // loud it must be, otherwise the slider can't rescue a microphone whose
     // spectrum simply doesn't look the way we expect.

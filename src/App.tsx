@@ -144,10 +144,10 @@ export default function App() {
     puffTimersRef.current = {}
   }, [])
 
-  /** Re-open the microphone if breath mode is still on. Safe to call twice. */
+  /** Listen again if breath mode is still on. Safe to call twice. */
   const rearmBreath = useCallback(() => {
     if (!breathOnRef.current) return
-    void detectorRef.current?.start(getAudio())
+    detectorRef.current?.resume(getAudio())
   }, [])
 
   const onHubDown = useCallback(() => {
@@ -183,7 +183,9 @@ export default function App() {
    */
   const triggerPuff = useCallback(() => {
     clearPuffTimers()
-    detectorRef.current?.stop()
+    // How this pauses is the detector's business: a full release where an open
+    // microphone would keep playback quiet, a mute everywhere else.
+    detectorRef.current?.pause()
     setPuffSounding(true)
     startSound('puff')
 

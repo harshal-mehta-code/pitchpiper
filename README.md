@@ -59,6 +59,55 @@ Vercel builds from this repo's default branch on every push; `vercel.json` sets
 the framework, build command and output directory, so there is nothing to
 configure.
 
+## Running everywhere
+
+The target is every phone and browser a chorus might turn up with, so platform
+differences are handled by capability rather than by assuming a platform. The
+awkward ones, and what is done about them:
+
+**An open microphone makes iOS quiet.** iOS and iPadOS pin the audio session to
+`playAndRecord` for as long as any capture track is live, which routes output
+away from the loudspeaker, and no web API can override the port. So breath
+defaults to **one puff**: the breath fires the note, the microphone is dropped,
+and the chord rings out at full volume before listening resumes.
+
+**But letting go of the microphone can re-prompt.** Firefox grants microphone
+access for a single use unless the person ticked "Remember", so re-acquiring
+raises a fresh permission prompt — once per puff would be intolerable. Pausing
+therefore takes one of two routes: fully release where an open microphone
+actually costs something (Apple mobile), or where `navigator.permissions` can
+confirm the grant is persistent and re-acquiring is silent; otherwise keep the
+track and mute it, which is instant and can never prompt. Both routes are
+tested.
+
+**Freshly opened microphones spit out garbage.** The first frames of a capture
+track are filters settling and gain ramping — loud and broadband, which is
+exactly what breath looks like. Without a grace period the pipe retriggers
+itself forever. Applies to every platform.
+
+**Safari is fussier about constraints.** It fails a whole `getUserMedia` call
+over a single constraint it dislikes, so constraints are tried as a ladder from
+the ideal unprocessed mono capture down to plain `audio: true`.
+
+**Safari needs the gesture.** The microphone prompt is only allowed while a user
+gesture is still live, so `getUserMedia` is reached synchronously from the tap
+rather than after awaiting the audio context.
+
+Smaller ones: `webkitAudioContext` is accepted as a fallback; `createConicGradient`
+falls back to a linear gradient for the brass; `dvh` units are paired with `vh`
+so a browser without them doesn't collapse the layout; wake lock, vibration,
+`enumerateDevices` and `navigator.audioSession` are all feature-detected and
+simply do nothing where absent. Sample rates are read from the context rather
+than assumed, so a narrowband headset stream is analysed only across the
+bandwidth it actually carries.
+
+Known limits, honestly: iOS has no vibration API, so detents there are audible
+but not tactile. Bluetooth headset microphones run their own noise suppression
+that strips breath before the page ever sees it — the input picker lets you
+force the built-in microphone instead. And a full chorus is spectrally
+indistinguishable from broadband noise, so breath mode can misfire if it is
+left on mid-song.
+
 ## Layout
 
 ```
