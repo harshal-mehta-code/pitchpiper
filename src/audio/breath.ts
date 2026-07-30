@@ -94,7 +94,17 @@ const CALIBRATION_MS = 900
  * forever. Happens on every platform; it is simply most destructive where
  * re-arming means acquiring the device again.
  */
-const ARM_SETTLE_MS = 260
+const ARM_SETTLE_MS = 400
+
+/**
+ * Shorter room measurement when re-arming between notes.
+ *
+ * Re-measuring at all might look wasteful when the room was measured seconds
+ * ago, but releasing and re-acquiring the microphone can come back with a
+ * different input gain — iOS changes the audio route along with the session
+ * category — and a noise floor recorded under the old gain describes nothing.
+ */
+const REARM_CALIBRATION_MS = 420
 
 /**
  * Apple's mobile platforms, however the browser is badged.
@@ -113,6 +123,19 @@ function isAppleMobile(): boolean {
   return /Macintosh/.test(ua) && navigator.maxTouchPoints > 1
 }
 
+/**
+ * Whether continuous breath control is worth having on as the default.
+ *
+ * Everywhere except Apple's mobile platforms it simply works, and following
+ * your breath the way a real reed does is the better instrument — so that is
+ * the default there. On iOS it is still offered, and still works; it is just
+ * quiet through the built-in speaker, which is fine on headphones and not fine
+ * in front of a chorus.
+ */
+export function prefersPuffMode(): boolean {
+  return isAppleMobile()
+}
+
 export class BreathDetector {
   private stream: MediaStream | null = null
   private ctx: AudioContext | null = null
@@ -128,9 +151,18 @@ export class BreathDetector {
   private gateOpen = false
   private calibrationSamples: number[] = []
   private calibrationUntil = 0
+  private calibrationFrom = 0
   private calibrated = false
   private paused = false
   private armedAt = 0
+  /**
+   * Set whenever listening (re)starts. The gate cannot open until the input
+   * has been observed genuinely quiet at least once, so whatever is still
+   * making noise at the moment we start — a decaying chord, a route-change
+   * click, a settling gain stage — cannot be read as a fresh breath.
+   */
+  private needsQuiet = false
+  private quietFrames = 0
   /**
    * Whether pausing should fully release the microphone or merely mute it.
    * Resolved once, from platform capability rather than a guess — see
@@ -254,17 +286,16 @@ export class BreathDetector {
     this.paused = false
     this.armedAt = performance.now()
     void this.resolveReleaseStrategy()
-    if (this.calibrated) {
-      // Re-arming between puffs. The room has not changed in the last two
-      // seconds, and making someone wait through a fresh measurement before
-      // they can blow again would feel broken.
-      this.calibrationUntil = 0
-      this.setStatus('listening')
-    } else {
-      this.calibrationSamples = []
-      this.calibrationUntil = performance.now() + CALIBRATION_MS
-      this.setStatus('calibrating')
-    }
+    this.calibrationSamples = []
+    // Measurement starts only once the input has settled; averaging in the
+    // start-up transient would set the noise floor from a burst of garbage and
+    // leave the trigger unreachable.
+    this.calibrationFrom = performance.now() + ARM_SETTLE_MS
+    this.calibrationUntil =
+      this.calibrationFrom +
+      (this.calibrated ? REARM_CALIBRATION_MS : CALIBRATION_MS)
+    this.needsQuiet = true
+    this.setStatus(this.calibrated ? 'listening' : 'calibrating')
     this.loop()
     return true
   }
@@ -352,6 +383,8 @@ export class BreathDetector {
     if (this.stream && this.paused) {
       this.paused = false
       this.armedAt = performance.now()
+      this.needsQuiet = true
+      this.quietFrames = 0
       this.stream.getTracks().forEach((t) => (t.enabled = true))
       this.setStatus('listening')
       return
@@ -396,7 +429,7 @@ export class BreathDetector {
     // --- calibration -----------------------------------------------------
     const now = performance.now()
     if (now < this.calibrationUntil) {
-      this.calibrationSamples.push(energy)
+      if (now >= this.calibrationFrom) this.calibrationSamples.push(energy)
       this.onFrame({
         pressure: 0,
         energy,
@@ -432,6 +465,7 @@ export class BreathDetector {
 
     // --- gate ------------------------------------------------------------
     const threshold = this.threshold()
+
     if (now - this.armedAt < ARM_SETTLE_MS) {
       this.gateOpen = false
       this.smoothed = 0
@@ -443,6 +477,30 @@ export class BreathDetector {
         threshold,
       })
       return
+    }
+
+    // Require the input to fall quiet once before it may trigger again. This
+    // is what stops a note from replaying the moment it ends: whatever is
+    // still making noise when we resume — the chord's own tail, the click of
+    // an audio route changing back, a gain stage settling — has to subside
+    // before a breath can be recognised. It cannot deadlock, because the room
+    // is re-measured on every arm, so "quiet" always means quiet *for here*.
+    if (this.needsQuiet) {
+      this.quietFrames = energy < threshold * 0.8 ? this.quietFrames + 1 : 0
+      if (this.quietFrames >= 4) {
+        this.needsQuiet = false
+      } else {
+        this.gateOpen = false
+        this.smoothed = 0
+        this.onFrame({
+          pressure: 0,
+          energy,
+          noisiness,
+          blowing: false,
+          threshold,
+        })
+        return
+      }
     }
     // Turning sensitivity up relaxes what counts as breath as well as how
     // loud it must be, otherwise the slider can't rescue a microphone whose

@@ -7,6 +7,7 @@ import { usePersistentState } from './hooks/usePersistentState'
 import { useWakeLock } from './hooks/useWakeLock'
 import {
   BreathDetector,
+  prefersPuffMode,
   type BreathFrame,
   type BreathStatus,
 } from './audio/breath'
@@ -32,15 +33,18 @@ type SoundMode = 'hold' | 'breath' | 'puff'
 /**
  * How breath drives the pipe.
  *
- * 'puff'  — a breath triggers the note, then the microphone is released and
- *           the chord rings out on its own. The default, because iOS forces
- *           the audio session into playAndRecord while any microphone track is
- *           live, which routes output away from the loudspeaker and drops the
- *           volume badly. Letting go of the microphone before making a sound
- *           costs nothing and gets the volume back.
  * 'live'  — the microphone stays open and drives loudness and timbre
- *           continuously, like a real reed. Lovely where the platform allows
- *           it; unusably quiet on an iPhone.
+ *           continuously, the way a real reed behaves. This is the better
+ *           instrument and the default everywhere it works.
+ * 'puff'  — a breath triggers the note, the microphone is released, and the
+ *           chord rings out on its own. The default on Apple's mobile
+ *           platforms only, where a live capture track pins the audio session
+ *           to playAndRecord, routes output off the loudspeaker, and leaves the
+ *           pipe quieter than the breath that triggered it. Nothing in the web
+ *           platform can override the output port, so the only lever is how
+ *           long the microphone is held.
+ *
+ * Both are always offered; only which one starts selected varies.
  */
 export type BreathResponse = 'puff' | 'live'
 
@@ -48,8 +52,13 @@ export type BreathResponse = 'puff' | 'live'
 const BLOOM_STEP = 0.075
 /** Breath pressure below which we let the note die. */
 const BREATH_FLOOR = 0.012
-/** How long a puff-triggered note rings before it decays. */
-const PUFF_SUSTAIN_MS = 2600
+/**
+ * How long a puff-triggered note rings, from a gentle breath to a hard one.
+ * The microphone is deaf while the note sounds, so the breath that started it
+ * is the only expression available — it had better count for something.
+ */
+const PUFF_SUSTAIN_MIN_MS = 1600
+const PUFF_SUSTAIN_MAX_MS = 3100
 /** Breathing room after a note before we re-open the microphone. */
 const REARM_DELAY_MS = 220
 
@@ -66,7 +75,7 @@ export default function App() {
   const [keepAwake, setKeepAwake] = usePersistentState('awake', true)
   const [breathResponse, setBreathResponse] = usePersistentState<BreathResponse>(
     'breathResponse',
-    'puff',
+    prefersPuffMode() ? 'puff' : 'live',
   )
   const [micDeviceId, setMicDeviceId] = usePersistentState<string | null>(
     'micDevice',
@@ -106,7 +115,7 @@ export default function App() {
   const puffTimersRef = useRef<{ end?: number; rearm?: number }>({})
 
   // --- sounding ------------------------------------------------------------
-  const startSound = useCallback((mode: SoundMode) => {
+  const startSound = useCallback((mode: SoundMode, strength = 1) => {
     const { noteIndex: n, chordId: c, octaveShift: o, a4: tuning } =
       paramsRef.current
     const chord = chordById(c)
@@ -119,6 +128,7 @@ export default function App() {
       // pressure curve your lungs are already providing.
       bloom: mode === 'breath' || tones.length === 1 ? 0 : BLOOM_STEP,
       driven: mode === 'breath',
+      levelScale: mode === 'puff' ? 0.72 + 0.28 * strength : 1,
     })
     soundModeRef.current = soundRef.current ? mode : null
   }, [])
@@ -181,14 +191,16 @@ export default function App() {
    * which routes output off the loudspeaker and makes the pipe quieter than
    * the breath that triggered it — so the order here is the entire point.
    */
-  const triggerPuff = useCallback(() => {
+  const triggerPuff = useCallback((strength: number) => {
     clearPuffTimers()
     // How this pauses is the detector's business: a full release where an open
     // microphone would keep playback quiet, a mute everywhere else.
     detectorRef.current?.pause()
     setPuffSounding(true)
-    startSound('puff')
+    startSound('puff', strength)
 
+    const sustain =
+      PUFF_SUSTAIN_MIN_MS + (PUFF_SUSTAIN_MAX_MS - PUFF_SUSTAIN_MIN_MS) * strength
     puffTimersRef.current.end = window.setTimeout(() => {
       if (soundModeRef.current === 'puff') stopSound()
       setPuffSounding(false)
@@ -196,7 +208,7 @@ export default function App() {
         rearmBreath,
         REARM_DELAY_MS,
       )
-    }, PUFF_SUSTAIN_MS)
+    }, sustain)
   }, [clearPuffTimers, rearmBreath, startSound, stopSound])
 
   const handleBreathFrame = useCallback(
@@ -208,7 +220,13 @@ export default function App() {
       if (responseRef.current === 'puff') {
         // One note per breath. The microphone is released the instant this
         // fires, so it cannot retrigger until it has been armed again.
-        if (f.blowing && soundModeRef.current !== 'puff') triggerPuff()
+        if (f.blowing && soundModeRef.current !== 'puff') {
+          // How far past the trigger the breath landed, as a rough measure of
+          // how hard it was blown. Taken on the opening frame because the
+          // microphone is about to be let go of.
+          const over = f.threshold > 0 ? f.energy / f.threshold : 1
+          triggerPuff(Math.min(1, Math.max(0, (over - 1) / 5)))
+        }
         return
       }
 

@@ -457,11 +457,13 @@ export interface PlayChordOptions {
   bloom?: number
   /** Breath mode voices start silent and follow the mic instead. */
   driven?: boolean
+  /** Scales the whole chord, so how hard you blew can set how loud it speaks. */
+  levelScale?: number
 }
 
 export function playChord(opts: PlayChordOptions): SoundingChord | null {
   if (!ctx || !master) return null
-  const level = voiceGainFor(opts.freqs.length)
+  const level = voiceGainFor(opts.freqs.length) * (opts.levelScale ?? 1)
   const bloom = opts.bloom ?? 0
 
   const voices = opts.freqs.map((freq, i) => {

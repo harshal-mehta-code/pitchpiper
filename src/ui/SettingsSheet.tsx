@@ -113,11 +113,17 @@ export function SettingsSheet(props: SettingsSheetProps) {
             </button>
           </div>
           <p className="hint">
-            <strong>One puff</strong> lets go of the microphone the moment it
-            fires, so the chord rings out at full volume — iPhones make
-            everything quieter while a microphone is open.{' '}
-            <strong>Follows breath</strong> keeps listening so loudness tracks
-            your breath, which is lovely but noticeably quieter on iOS.
+            <strong>Follows breath</strong> is the real thing — the pipe tracks
+            your breath as you blow, louder and brighter the harder you go.{' '}
+            <strong>One puff</strong> fires the chord and lets go of the
+            microphone so it can ring out at full volume; how hard you blow
+            still sets how loud and how long.
+          </p>
+          <p className="hint">
+            iPhones and iPads turn the volume down for as long as any app is
+            listening, and no website can override that — so <em>Follows
+            breath</em> is quiet there through the speaker, though it is fine on
+            headphones. Everywhere else, use it.
           </p>
         </Row>
 
