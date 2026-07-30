@@ -5,11 +5,14 @@ import { useCallback, useState } from 'react'
  * and should never think about it again.
  */
 export function usePersistentState<T>(key: string, initial: T) {
-  const storageKey = `pipedream:${key}`
+  const storageKey = `pitchpiper:${key}`
 
   const [value, setValue] = useState<T>(() => {
     try {
-      const raw = localStorage.getItem(storageKey)
+      // Fall back to the pre-rename key so nobody's tuning and volume reset
+      // out from under them when the app changed name.
+      const raw =
+        localStorage.getItem(storageKey) ?? localStorage.getItem(`pipedream:${key}`)
       return raw === null ? initial : (JSON.parse(raw) as T)
     } catch {
       return initial

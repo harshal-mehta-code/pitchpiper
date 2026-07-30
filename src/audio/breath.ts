@@ -13,6 +13,8 @@
  * plus flatness separates them cleanly.
  */
 
+import { setAudioSessionType } from './engine'
+
 export type BreathStatus =
   | 'idle'
   | 'requesting'
@@ -87,24 +89,67 @@ export class BreathDetector {
     }
 
     this.setStatus('requesting')
-    try {
-      // Every one of these processors is designed to remove exactly the signal
-      // we want. Noise suppression in particular will happily erase breath as
-      // "background noise", and AGC would fight our pressure mapping.
-      this.stream = await navigator.mediaDevices.getUserMedia({
+
+    // Safari will not open the microphone while the page's audio session is
+    // declared playback-only, which is how we start up so the ringer switch
+    // can't silence the pipe. Move it before asking.
+    setAudioSessionType('play-and-record')
+
+    // Every one of these processors is designed to remove exactly the signal
+    // we want: noise suppression will happily erase breath as "background
+    // noise", and AGC fights the pressure mapping. Safari is fussier about
+    // audio constraints than Chrome and fails the whole call over one it
+    // dislikes, so ask for the ideal setup and walk down from there.
+    const attempts: MediaStreamConstraints[] = [
+      {
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
           channelCount: 1,
         },
-      })
-    } catch (err) {
-      const name = (err as DOMException)?.name
+      },
+      {
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      },
+      { audio: true },
+    ]
+
+    let lastError: unknown = null
+    for (const constraints of attempts) {
+      try {
+        this.stream = await navigator.mediaDevices.getUserMedia(constraints)
+        break
+      } catch (err) {
+        lastError = err
+        // A refusal is final. Retrying just re-prompts for something the
+        // person has already declined.
+        const name = (err as DOMException)?.name
+        if (name === 'NotAllowedError' || name === 'SecurityError') break
+      }
+    }
+
+    if (!this.stream) {
+      setAudioSessionType('playback')
+      const name = (lastError as DOMException)?.name ?? ''
       if (name === 'NotAllowedError' || name === 'SecurityError') {
         this.setStatus('denied')
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        this.setStatus('error', 'No microphone found on this device.')
+      } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+        this.setStatus('error', 'Another app is holding the microphone.')
       } else {
-        this.setStatus('error', name ?? 'Could not open the microphone.')
+        // Surface whatever the browser actually said. A generic "unavailable"
+        // is impossible to act on and impossible to debug remotely.
+        const msg = (lastError as Error)?.message
+        this.setStatus(
+          'error',
+          [name, msg].filter(Boolean).join(': ') || 'Could not open the microphone.',
+        )
       }
       return false
     }
@@ -140,6 +185,8 @@ export class BreathDetector {
     this.stream?.getTracks().forEach((t) => t.stop())
     this.stream = null
     this.gateOpen = false
+    // Back to playback-only, so the ringer switch stops mattering again.
+    setAudioSessionType('playback')
     this.setStatus('idle')
   }
 

@@ -119,10 +119,38 @@ function buildMaster(context: AudioContext): MasterChain {
 }
 
 /**
- * Must be called from a user gesture. Safari will not start an AudioContext
- * any other way, and will silently suspend it again when the tab backgrounds.
+ * Declare what this page does with audio.
+ *
+ * iOS Safari maps this onto an AVAudioSession category. "playback" is what we
+ * want almost all of the time: it means the ringer switch can't silence the
+ * pipe, which matters when a director is on stage with a phone on silent.
+ *
+ * But "playback" also declares that the page will *not* record — so while it
+ * is set, Safari refuses to hand over the microphone. Breath mode has to move
+ * the session to "play-and-record" first, and put it back afterwards.
  */
-export async function ensureAudio(): Promise<AudioContext> {
+export type AudioSessionType = 'playback' | 'play-and-record'
+
+export function setAudioSessionType(type: AudioSessionType) {
+  const session = (navigator as unknown as { audioSession?: { type: string } })
+    .audioSession
+  if (!session) return
+  try {
+    session.type = type
+  } catch {
+    /* not fatal — older WebKit has no audio session API at all */
+  }
+}
+
+/**
+ * Get the audio context, creating it if needed, without awaiting.
+ *
+ * Safari grants a user gesture a short window in which privileged calls are
+ * allowed, and every `await` risks spending it. Callers that are about to do
+ * something gated — `getUserMedia` above all — should use this and let the
+ * gated call be the first await in the chain.
+ */
+export function getAudio(): AudioContext {
   if (!ctx) {
     const Ctor: typeof AudioContext =
       window.AudioContext ??
@@ -130,23 +158,20 @@ export async function ensureAudio(): Promise<AudioContext> {
         .webkitAudioContext
     ctx = new Ctor({ latencyHint: 'interactive' })
     master = buildMaster(ctx)
-
-    // Modern iOS Safari: opt into the "playback" audio session so the ringer
-    // switch doesn't silence us. A director on stage with their phone on
-    // silent should still get a pitch.
-    const session = (
-      navigator as unknown as { audioSession?: { type: string } }
-    ).audioSession
-    if (session) {
-      try {
-        session.type = 'playback'
-      } catch {
-        /* not fatal — older WebKit */
-      }
-    }
+    setAudioSessionType('playback')
   }
-  if (ctx.state === 'suspended') await ctx.resume()
+  if (ctx.state === 'suspended') void ctx.resume()
   return ctx
+}
+
+/**
+ * Must be called from a user gesture. Safari will not start an AudioContext
+ * any other way, and will silently suspend it again when the tab backgrounds.
+ */
+export async function ensureAudio(): Promise<AudioContext> {
+  const context = getAudio()
+  if (context.state === 'suspended') await context.resume()
+  return context
 }
 
 export function getAnalyser(): AnalyserNode | null {

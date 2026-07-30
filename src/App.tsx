@@ -13,6 +13,7 @@ import {
 import {
   ensureAudio,
   getAnalyser,
+  getAudio,
   playChord,
   setHallMode,
   setMasterVolume,
@@ -48,6 +49,7 @@ export default function App() {
   // --- session state -------------------------------------------------------
   const [breathMode, setBreathMode] = useState(false)
   const [breathStatus, setBreathStatus] = useState<BreathStatus>('idle')
+  const [breathDetail, setBreathDetail] = useState<string | undefined>()
   const [hubActive, setHubActive] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
 
@@ -138,9 +140,10 @@ export default function App() {
 
   const getDetector = useCallback(() => {
     if (!detectorRef.current) {
-      detectorRef.current = new BreathDetector(handleBreathFrame, (s) =>
-        setBreathStatus(s),
-      )
+      detectorRef.current = new BreathDetector(handleBreathFrame, (s, d) => {
+        setBreathStatus(s)
+        setBreathDetail(d)
+      })
     }
     detectorRef.current.sensitivity = sensitivity
     return detectorRef.current
@@ -151,15 +154,19 @@ export default function App() {
       setBreathMode(on)
       const det = getDetector()
       if (on) {
-        // Started straight from the click so the browser still sees an active
-        // user gesture — both getUserMedia and Safari's audio unlock need it.
-        void prepareAudio().then((ctx) => det.start(ctx))
+        // Deliberately synchronous up to the getUserMedia call. Safari only
+        // allows the microphone prompt while a user gesture is still live, and
+        // awaiting the audio context first can spend that window.
+        const ctx = getAudio()
+        setHallMode(settingsRef.current.hallMode)
+        setMasterVolume(settingsRef.current.volume)
+        void det.start(ctx)
       } else {
         det.stop()
         if (soundModeRef.current === 'breath') stopSound()
       }
     },
-    [getDetector, prepareAudio, stopSound],
+    [getDetector, stopSound],
   )
 
   useEffect(() => {
@@ -258,7 +265,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="wordmark">
-          Pipe<span>Dream</span>
+          Pitch<span>Piper</span>
         </div>
         <div className="tuning-badge">A={a4}</div>
       </header>
@@ -293,7 +300,11 @@ export default function App() {
       </main>
 
       {breathMode && (
-        <BreathMeter status={breathStatus} frameRef={breathFrameRef} />
+        <BreathMeter
+          status={breathStatus}
+          detail={breathDetail}
+          frameRef={breathFrameRef}
+        />
       )}
 
       <ControlTray

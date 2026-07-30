@@ -134,7 +134,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
         </Row>
 
         <div className="sheet-about">
-          <strong>Pipe Dream</strong> — thirteen holes, F to F, same as the
+          <strong>Pitch Piper</strong> — thirteen holes, F to F, same as the
           Kratt in your jacket pocket. Add it to your home screen and it works
           with no signal at all.
         </div>

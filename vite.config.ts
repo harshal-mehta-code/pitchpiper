@@ -12,8 +12,8 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
       },
       manifest: {
-        name: 'Pipe Dream — Pitch Pipe',
-        short_name: 'Pipe Dream',
+        name: 'Pitch Piper — Pitch Pipe',
+        short_name: 'Pitch Piper',
         description:
           'A pitch pipe you actually want to pick up. Blow into your phone, spin the brass, give your chorus the chord.',
         theme_color: '#0d1a16',

@@ -1,4 +1,4 @@
-# Pipe Dream
+# Pitch Piper
 
 **A pitch pipe you actually want to pick up.** Built for barbershop chorus
 rehearsals.
@@ -51,22 +51,13 @@ npm run dev
 The microphone needs a secure context, so breath input works on `localhost` and
 on any https deployment, but not over plain http to a LAN address.
 
-## Deploy to Vercel
+## Deployment
 
-The repo is ready to import — `vercel.json` sets the framework, build command
-and output directory, so there is nothing to configure.
+Live at **[pitchpiper.vercel.app](https://pitchpiper.vercel.app)**.
 
-1. Go to [vercel.com/new](https://vercel.com/new) and import
-   `harshal-mehta-code/pitchpipe`.
-2. Pick the `claude/pitch-pipe-app-design-4whe67` branch (or merge it to `main`
-   first and deploy that).
-3. Deploy. You'll get a shareable `https://…vercel.app` link.
-
-Or from the CLI:
-
-```bash
-npx vercel --prod
-```
+Vercel builds from this repo's default branch on every push; `vercel.json` sets
+the framework, build command and output directory, so there is nothing to
+configure.
 
 ## Layout
 

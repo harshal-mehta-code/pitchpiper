@@ -1,5 +1,5 @@
 /*
- * Pipe Dream — the inside of a vintage instrument case.
+ * Pitch Piper — the inside of a vintage instrument case.
  *
  * Deep felt, brushed brass, and exactly one warm light source. Everything on
  * screen either is the instrument or gets out of its way.
@@ -235,6 +235,20 @@ body {
 
 .breath-meter.is-bad .breath-status {
   color: #e88b6d;
+}
+
+.breath-detail {
+  font-size: 10.5px;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--ink-dim);
+  opacity: 0.85;
+  max-width: 330px;
+}
+
+.breath-detail strong {
+  color: var(--brass);
+  font-weight: 600;
 }
 
 /* --- control tray --------------------------------------------------------- */
