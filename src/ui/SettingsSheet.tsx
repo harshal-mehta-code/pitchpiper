@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { BreathFrame } from '../audio/breath'
+import type { BreathResponse } from '../App'
 
 export interface SettingsSheetProps {
   open: boolean
@@ -17,6 +18,11 @@ export interface SettingsSheetProps {
   volume: number
   onVolume: (v: number) => void
   breathFrameRef: React.RefObject<BreathFrame | null>
+  breathResponse: BreathResponse
+  onBreathResponse: (v: BreathResponse) => void
+  micInputs: MediaDeviceInfo[]
+  micDeviceId: string | null
+  onMicDevice: (id: string | null) => void
 }
 
 export function SettingsSheet(props: SettingsSheetProps) {
@@ -87,6 +93,55 @@ export function SettingsSheet(props: SettingsSheetProps) {
             </button>
           </div>
         </Row>
+
+        <Row
+          label="How breath sounds it"
+          value={props.breathResponse === 'puff' ? 'One puff' : 'Follows breath'}
+        >
+          <div className="switch-row">
+            <button
+              className={`chip${props.breathResponse === 'puff' ? ' is-on' : ''}`}
+              onClick={() => props.onBreathResponse('puff')}
+            >
+              One puff
+            </button>
+            <button
+              className={`chip${props.breathResponse === 'live' ? ' is-on' : ''}`}
+              onClick={() => props.onBreathResponse('live')}
+            >
+              Follows breath
+            </button>
+          </div>
+          <p className="hint">
+            <strong>One puff</strong> lets go of the microphone the moment it
+            fires, so the chord rings out at full volume — iPhones make
+            everything quieter while a microphone is open.{' '}
+            <strong>Follows breath</strong> keeps listening so loudness tracks
+            your breath, which is lovely but noticeably quieter on iOS.
+          </p>
+        </Row>
+
+        {props.micInputs.length > 1 && (
+          <Row label="Microphone">
+            <select
+              className="select"
+              value={props.micDeviceId ?? ''}
+              onChange={(e) => props.onMicDevice(e.target.value || null)}
+            >
+              <option value="">Automatic</option>
+              {props.micInputs.map((d, i) => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.label || `Input ${i + 1}`}
+                </option>
+              ))}
+            </select>
+            <p className="hint">
+              Headset microphones often strip breath out as background noise
+              before we ever see it. If blowing does nothing, come back here and
+              pick the phone's own microphone.
+            </p>
+          </Row>
+        )}
 
         <Row
           label="Breath sensitivity"

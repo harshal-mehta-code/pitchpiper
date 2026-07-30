@@ -24,11 +24,18 @@ export interface BreathMeterProps {
   status: BreathStatus
   /** What the browser actually said, when it said anything useful. */
   detail?: string
+  /** True while a puff-triggered note rings with the microphone released. */
+  sounding?: boolean
   /** Written every animation frame by the detector, never through React. */
   frameRef: React.RefObject<BreathFrame | null>
 }
 
-export function BreathMeter({ status, detail, frameRef }: BreathMeterProps) {
+export function BreathMeter({
+  status,
+  detail,
+  sounding,
+  frameRef,
+}: BreathMeterProps) {
   const fillRef = useRef<HTMLDivElement>(null)
   const markRef = useRef<HTMLDivElement>(null)
   const barRef = useRef<HTMLDivElement>(null)
@@ -63,11 +70,13 @@ export function BreathMeter({ status, detail, frameRef }: BreathMeterProps) {
 
   return (
     <div className={`breath-meter${bad ? ' is-bad' : ''}`}>
-      <div className="breath-bar" ref={barRef}>
+      <div className={`breath-bar${sounding ? ' is-paused' : ''}`} ref={barRef}>
         <div className="breath-fill" ref={fillRef} />
         <div className="breath-mark" ref={markRef} />
       </div>
-      <div className="breath-status">{STATUS_TEXT[status]}</div>
+      <div className="breath-status">
+        {sounding ? 'Ringing — microphone paused for full volume' : STATUS_TEXT[status]}
+      </div>
       {bad && detail && <div className="breath-detail">{detail}</div>}
       {status === 'denied' && (
         <div className="breath-detail">

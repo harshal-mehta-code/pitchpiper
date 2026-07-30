@@ -583,3 +583,19 @@ body {
   color: var(--amber);
   font-variant-numeric: tabular-nums;
 }
+
+.select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  appearance: none;
+}
+
+.breath-bar.is-paused {
+  opacity: 0.3;
+}

@@ -68,6 +68,19 @@ const NOISE_HOLD = 0.24
 const LOUD_PUFF_RATIO = 2.2
 const LOUD_PUFF_NOISE = 0.28
 
+/**
+ * Clamps, deliberately far below any real microphone's self-noise.
+ *
+ * These only exist to stop a stream reporting digital silence from driving the
+ * trigger to zero. They are emphatically *not* a sensitivity control: an
+ * absolute floor set anywhere near real signal levels overrides the room
+ * measurement in a quiet hall, and then the trigger sits at some fixed loudness
+ * that has nothing to do with the room — which is what made blowing so hard.
+ * Sensitivity belongs entirely to the multiple-of-the-room in threshold().
+ */
+const NOISE_FLOOR_MIN = 0.00005
+const ABSOLUTE_MIN = 0.00012
+
 const CALIBRATION_MS = 900
 
 export class BreathDetector {
@@ -85,9 +98,13 @@ export class BreathDetector {
   private gateOpen = false
   private calibrationSamples: number[] = []
   private calibrationUntil = 0
+  private calibrated = false
 
   /** User-facing sensitivity, 0..1. Higher = easier to trigger. */
-  sensitivity = 0.5
+  sensitivity = 0.65
+
+  /** Preferred input device, if the person has picked one. */
+  deviceId: string | null = null
 
   status: BreathStatus = 'idle'
 
@@ -126,22 +143,18 @@ export class BreathDetector {
     // noise", and AGC fights the pressure mapping. Safari is fussier about
     // audio constraints than Chrome and fails the whole call over one it
     // dislikes, so ask for the ideal setup and walk down from there.
+    const raw = {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+    }
+    const device = this.deviceId ? { deviceId: { exact: this.deviceId } } : {}
     const attempts: MediaStreamConstraints[] = [
-      {
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-          channelCount: 1,
-        },
-      },
-      {
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        },
-      },
+      { audio: { ...device, ...raw, channelCount: 1 } },
+      { audio: { ...device, ...raw } },
+      { audio: { ...device } },
+      // Last resort drops the device pin too, so a headset that has since
+      // disconnected can't lock the feature out entirely.
       { audio: true },
     ]
 
@@ -183,7 +196,12 @@ export class BreathDetector {
     this.ctx = context
     this.source = context.createMediaStreamSource(this.stream)
     this.analyser = context.createAnalyser()
-    this.analyser.fftSize = 1024
+    // 4096 rather than 1024, because resolution decides whether a voice reads
+    // as harmonic. At 1024 the bins are ~47 Hz apart while a low male voice
+    // puts harmonics every ~130 Hz — under three bins — so the spectrum looks
+    // continuous rather than peaky and speech scored as breath. At 4096 the
+    // bins are ~12 Hz and the harmonics stand clear of the gaps between them.
+    this.analyser.fftSize = 4096
     this.analyser.smoothingTimeConstant = 0.15
     this.source.connect(this.analyser)
     // Deliberately not connected to the destination — routing the mic to the
@@ -192,13 +210,35 @@ export class BreathDetector {
     this.timeBuf = new Float32Array(this.analyser.fftSize)
     this.freqBuf = new Float32Array(this.analyser.frequencyBinCount)
 
-    this.calibrationSamples = []
-    this.calibrationUntil = performance.now() + CALIBRATION_MS
     this.smoothed = 0
     this.gateOpen = false
-    this.setStatus('calibrating')
+    if (this.calibrated) {
+      // Re-arming between puffs. The room has not changed in the last two
+      // seconds, and making someone wait through a fresh measurement before
+      // they can blow again would feel broken.
+      this.calibrationUntil = 0
+      this.setStatus('listening')
+    } else {
+      this.calibrationSamples = []
+      this.calibrationUntil = performance.now() + CALIBRATION_MS
+      this.setStatus('calibrating')
+    }
     this.loop()
     return true
+  }
+
+  /**
+   * Input devices to choose from. Labels only exist once permission has been
+   * granted, so this is worth calling after the microphone is already open.
+   */
+  static async listInputs(): Promise<MediaDeviceInfo[]> {
+    if (!navigator.mediaDevices?.enumerateDevices) return []
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices()
+      return all.filter((d) => d.kind === 'audioinput')
+    } catch {
+      return []
+    }
   }
 
   stop() {
@@ -218,6 +258,7 @@ export class BreathDetector {
 
   /** Re-measure the room. Worth doing when you move to a noisier hall. */
   recalibrate() {
+    this.calibrated = false
     if (!this.stream) return
     this.calibrationSamples = []
     this.calibrationUntil = performance.now() + CALIBRATION_MS
@@ -232,12 +273,15 @@ export class BreathDetector {
     analyser.getFloatTimeDomainData(this.timeBuf)
     analyser.getFloatFrequencyData(this.freqBuf)
 
-    // Broadband level.
+    // Broadband level, over the most recent ~20ms only. The FFT window is much
+    // longer than that for the sake of frequency resolution, but averaging
+    // loudness across 85ms would blunt the attack of a puff.
+    const window = Math.min(1024, this.timeBuf.length)
     let sum = 0
-    for (let i = 0; i < this.timeBuf.length; i++) {
+    for (let i = this.timeBuf.length - window; i < this.timeBuf.length; i++) {
       sum += this.timeBuf[i] * this.timeBuf[i]
     }
-    const energy = Math.sqrt(sum / this.timeBuf.length)
+    const energy = Math.sqrt(sum / window)
 
     const noisiness = this.noisiness()
 
@@ -259,10 +303,23 @@ export class BreathDetector {
       // doesn't leave the gate permanently unreachable.
       const sorted = this.calibrationSamples.slice().sort((a, b) => a - b)
       const p90 = sorted[Math.floor(sorted.length * 0.9)] ?? 0.004
-      this.noiseFloor = Math.max(0.0015, p90)
+      this.noiseFloor = Math.max(NOISE_FLOOR_MIN, p90)
       this.ceiling = Math.max(this.noiseFloor * 8, 0.04)
       this.calibrationSamples = []
+      this.calibrated = true
       this.setStatus('listening')
+    }
+
+    // Keep tracking the room rather than trusting one measurement forever.
+    // Falls fast and rises slowly, so a quiet hall pulls the trigger point
+    // down with it — a floor measured once during a noisy moment was a large
+    // part of why blowing had to be so hard.
+    if (!this.gateOpen) {
+      const k = energy < this.noiseFloor ? 0.25 : 0.0009
+      this.noiseFloor = Math.max(
+        NOISE_FLOOR_MIN,
+        this.noiseFloor + (energy - this.noiseFloor) * k,
+      )
     }
 
     // --- gate ------------------------------------------------------------
@@ -316,9 +373,11 @@ export class BreathDetector {
   }
 
   private threshold(): number {
-    // sensitivity 0 -> 6x noise floor (deaf), 1 -> 1.6x (hair trigger)
-    const mult = 6 - this.sensitivity * 4.4
-    return Math.max(0.006, this.noiseFloor * mult)
+    // sensitivity 0 -> 5x the room (needs a real puff), 1 -> 1.8x (hair
+    // trigger). The absolute floor is only a backstop against a microphone
+    // reporting implausible silence; the room measurement normally dominates.
+    const mult = 5 - this.sensitivity * 3.2
+    return Math.max(ABSOLUTE_MIN, this.noiseFloor * mult)
   }
 
   /**
@@ -339,7 +398,11 @@ export class BreathDetector {
     const binHz = nyquist / this.freqBuf.length
     const BANDS = 8
     const LO = 300
-    const HI = 8000
+    // Clamped to what the stream can actually carry. A phone-call headset
+    // running narrowband has nothing above ~4 kHz, and analysing empty
+    // spectrum as though it were signal tells us nothing.
+    const HI = Math.min(8000, nyquist * 0.92)
+    if (HI <= LO * 2) return 0
     const ratio = Math.pow(HI / LO, 1 / BANDS)
 
     const flat: number[] = []
@@ -365,7 +428,13 @@ export class BreathDetector {
         n++
       }
       flat.push(Math.exp(logSum / n) / (linSum / n))
-      power.push(linSum)
+      // Mean per bin, not the total. The bands are log-spaced, so the top one
+      // spans a dozen times as many bins as the bottom one; ranking them by
+      // total power let a wide, quiet, harmonic-free band outrank a narrow one
+      // carrying a loud harmonic — and then the statistic was computed over
+      // exactly the bands with no harmonics in them, which is how a speaking
+      // voice scored as breath.
+      power.push(linSum / n)
     }
     if (!flat.length) return 0
 

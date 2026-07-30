@@ -27,12 +27,31 @@ import {
   PIPE_NOTES,
 } from './music/notes'
 
-type SoundMode = 'hold' | 'breath'
+type SoundMode = 'hold' | 'breath' | 'puff'
+
+/**
+ * How breath drives the pipe.
+ *
+ * 'puff'  — a breath triggers the note, then the microphone is released and
+ *           the chord rings out on its own. The default, because iOS forces
+ *           the audio session into playAndRecord while any microphone track is
+ *           live, which routes output away from the loudspeaker and drops the
+ *           volume badly. Letting go of the microphone before making a sound
+ *           costs nothing and gets the volume back.
+ * 'live'  — the microphone stays open and drives loudness and timbre
+ *           continuously, like a real reed. Lovely where the platform allows
+ *           it; unusably quiet on an iPhone.
+ */
+export type BreathResponse = 'puff' | 'live'
 
 /** Seconds between voices when a chord blooms open. */
 const BLOOM_STEP = 0.075
 /** Breath pressure below which we let the note die. */
 const BREATH_FLOOR = 0.012
+/** How long a puff-triggered note rings before it decays. */
+const PUFF_SUSTAIN_MS = 2600
+/** Breathing room after a note before we re-open the microphone. */
+const REARM_DELAY_MS = 220
 
 export default function App() {
   // --- persisted preferences ---------------------------------------------
@@ -43,8 +62,16 @@ export default function App() {
   const [useFlats, setUseFlats] = usePersistentState('flats', true)
   const [a4, setA4] = usePersistentState('a4', 440)
   const [volume, setVolume] = usePersistentState('volume', 0.85)
-  const [sensitivity, setSensitivity] = usePersistentState('sensitivity', 0.5)
+  const [sensitivity, setSensitivity] = usePersistentState('sensitivity', 0.65)
   const [keepAwake, setKeepAwake] = usePersistentState('awake', true)
+  const [breathResponse, setBreathResponse] = usePersistentState<BreathResponse>(
+    'breathResponse',
+    'puff',
+  )
+  const [micDeviceId, setMicDeviceId] = usePersistentState<string | null>(
+    'micDevice',
+    null,
+  )
 
   // --- session state -------------------------------------------------------
   const [breathMode, setBreathMode] = useState(false)
@@ -52,6 +79,9 @@ export default function App() {
   const [breathDetail, setBreathDetail] = useState<string | undefined>()
   const [hubActive, setHubActive] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  /** True while a puff-triggered note is ringing with the microphone released. */
+  const [puffSounding, setPuffSounding] = useState(false)
+  const [micInputs, setMicInputs] = useState<MediaDeviceInfo[]>([])
 
   useWakeLock(keepAwake)
 
@@ -67,6 +97,13 @@ export default function App() {
   paramsRef.current = { noteIndex, chordId, octaveShift, a4 }
   const settingsRef = useRef({ hallMode, volume })
   settingsRef.current = { hallMode, volume }
+
+  const detectorRef = useRef<BreathDetector | null>(null)
+  const breathOnRef = useRef(breathMode)
+  breathOnRef.current = breathMode
+  const responseRef = useRef(breathResponse)
+  responseRef.current = breathResponse
+  const puffTimersRef = useRef<{ end?: number; rearm?: number }>({})
 
   // --- sounding ------------------------------------------------------------
   const startSound = useCallback((mode: SoundMode) => {
@@ -100,15 +137,32 @@ export default function App() {
     return ctx
   }, [])
 
+  const clearPuffTimers = useCallback(() => {
+    const t = puffTimersRef.current
+    if (t.end) window.clearTimeout(t.end)
+    if (t.rearm) window.clearTimeout(t.rearm)
+    puffTimersRef.current = {}
+  }, [])
+
+  /** Re-open the microphone if breath mode is still on. Safe to call twice. */
+  const rearmBreath = useCallback(() => {
+    if (!breathOnRef.current) return
+    void detectorRef.current?.start(getAudio())
+  }, [])
+
   const onHubDown = useCallback(() => {
     setHubActive(true)
+    // A thumb on the hub takes over from a ringing puff.
+    clearPuffTimers()
+    setPuffSounding(false)
     void prepareAudio().then(() => startSound('hold'))
-  }, [prepareAudio, startSound])
+  }, [clearPuffTimers, prepareAudio, startSound])
 
   const onHubUp = useCallback(() => {
     setHubActive(false)
     if (soundModeRef.current === 'hold') stopSound()
-  }, [stopSound])
+    rearmBreath()
+  }, [rearmBreath, stopSound])
 
   // Re-voice a sounding note when the pitch under it changes, so spinning the
   // disc mid-note actually moves the pitch instead of being ignored.
@@ -120,13 +174,41 @@ export default function App() {
   useEffect(() => setMasterVolume(volume), [volume])
 
   // --- breath --------------------------------------------------------------
-  const detectorRef = useRef<BreathDetector | null>(null)
+
+  /**
+   * A breath fires the note, and the microphone is dropped before a sound is
+   * made. On iOS a live capture track pins the audio session to playAndRecord,
+   * which routes output off the loudspeaker and makes the pipe quieter than
+   * the breath that triggered it — so the order here is the entire point.
+   */
+  const triggerPuff = useCallback(() => {
+    clearPuffTimers()
+    detectorRef.current?.stop()
+    setPuffSounding(true)
+    startSound('puff')
+
+    puffTimersRef.current.end = window.setTimeout(() => {
+      if (soundModeRef.current === 'puff') stopSound()
+      setPuffSounding(false)
+      puffTimersRef.current.rearm = window.setTimeout(
+        rearmBreath,
+        REARM_DELAY_MS,
+      )
+    }, PUFF_SUSTAIN_MS)
+  }, [clearPuffTimers, rearmBreath, startSound, stopSound])
 
   const handleBreathFrame = useCallback(
     (f: BreathFrame) => {
       breathFrameRef.current = f
       // A held note wins. If a thumb is on the hub, the mic stays out of it.
       if (soundModeRef.current === 'hold') return
+
+      if (responseRef.current === 'puff') {
+        // One note per breath. The microphone is released the instant this
+        // fires, so it cannot retrigger until it has been armed again.
+        if (f.blowing && soundModeRef.current !== 'puff') triggerPuff()
+        return
+      }
 
       if (f.pressure > BREATH_FLOOR) {
         if (soundModeRef.current !== 'breath') startSound('breath')
@@ -135,19 +217,29 @@ export default function App() {
         stopSound()
       }
     },
-    [startSound, stopSound],
+    [startSound, stopSound, triggerPuff],
   )
+
+  // The detector is built once but this callback is not stable, so it is
+  // reached through a ref. Capturing the first version would leave the puff
+  // path wired to a stale closure.
+  const frameHandlerRef = useRef(handleBreathFrame)
+  frameHandlerRef.current = handleBreathFrame
 
   const getDetector = useCallback(() => {
     if (!detectorRef.current) {
-      detectorRef.current = new BreathDetector(handleBreathFrame, (s, d) => {
-        setBreathStatus(s)
-        setBreathDetail(d)
-      })
+      detectorRef.current = new BreathDetector(
+        (f) => frameHandlerRef.current(f),
+        (s, d) => {
+          setBreathStatus(s)
+          setBreathDetail(d)
+        },
+      )
     }
     detectorRef.current.sensitivity = sensitivity
+    detectorRef.current.deviceId = micDeviceId
     return detectorRef.current
-  }, [handleBreathFrame, sensitivity])
+  }, [micDeviceId, sensitivity])
 
   const handleBreathMode = useCallback(
     (on: boolean) => {
@@ -160,20 +252,58 @@ export default function App() {
         const ctx = getAudio()
         setHallMode(settingsRef.current.hallMode)
         setMasterVolume(settingsRef.current.volume)
-        void det.start(ctx)
+        void det.start(ctx).then((ok) => {
+          // Device labels are blank until permission has been granted, so the
+          // list is only worth fetching once the microphone is actually open.
+          if (ok) void BreathDetector.listInputs().then(setMicInputs)
+        })
       } else {
+        clearPuffTimers()
+        setPuffSounding(false)
         det.stop()
-        if (soundModeRef.current === 'breath') stopSound()
+        if (soundModeRef.current === 'breath' || soundModeRef.current === 'puff') {
+          stopSound()
+        }
       }
     },
-    [getDetector, stopSound],
+    [clearPuffTimers, getDetector, stopSound],
+  )
+
+  /** Switching input device means tearing the stream down and asking again. */
+  const handleMicDevice = useCallback(
+    (id: string | null) => {
+      setMicDeviceId(id)
+      const det = detectorRef.current
+      if (!det || !breathOnRef.current) return
+      det.deviceId = id
+      det.stop()
+      det.recalibrate()
+      void det.start(getAudio())
+    },
+    [setMicDeviceId],
   )
 
   useEffect(() => {
     if (detectorRef.current) detectorRef.current.sensitivity = sensitivity
   }, [sensitivity])
 
-  useEffect(() => () => detectorRef.current?.stop(), [])
+  // Switching response mode mid-note would leave a voice stranded.
+  useEffect(() => {
+    clearPuffTimers()
+    setPuffSounding(false)
+    if (soundModeRef.current === 'breath' || soundModeRef.current === 'puff') {
+      stopSound()
+    }
+    rearmBreath()
+  }, [breathResponse, clearPuffTimers, rearmBreath, stopSound])
+
+  useEffect(
+    () => () => {
+      clearPuffTimers()
+      detectorRef.current?.stop()
+    },
+    [clearPuffTimers],
+  )
 
   // --- glow ----------------------------------------------------------------
   // Driven from the output signal itself rather than from an envelope we track
@@ -257,9 +387,11 @@ export default function App() {
     [setNoteIndex],
   )
 
-  const hint = breathMode
-    ? 'Blow at your phone — or hold the middle'
-    : 'Hold the middle. Spin the ring to change note.'
+  const hint = !breathMode
+    ? 'Hold the middle. Spin the ring to change note.'
+    : breathResponse === 'puff'
+      ? 'One puff at the bottom of your phone — or hold the middle'
+      : 'Blow at your phone — or hold the middle'
 
   return (
     <div className="app">
@@ -303,6 +435,7 @@ export default function App() {
         <BreathMeter
           status={breathStatus}
           detail={breathDetail}
+          sounding={puffSounding}
           frameRef={breathFrameRef}
         />
       )}
@@ -335,6 +468,11 @@ export default function App() {
         volume={volume}
         onVolume={setVolume}
         breathFrameRef={breathFrameRef}
+        breathResponse={breathResponse}
+        onBreathResponse={setBreathResponse}
+        micInputs={micInputs}
+        micDeviceId={micDeviceId}
+        onMicDevice={handleMicDevice}
       />
     </div>
   )
