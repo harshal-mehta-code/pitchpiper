@@ -98,6 +98,45 @@ body {
   margin-left: 0.35em;
 }
 
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink-dim);
+  cursor: pointer;
+  transition:
+    color 0.18s,
+    border-color 0.18s,
+    background 0.18s;
+}
+
+.icon-btn svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-btn.is-on {
+  color: var(--amber);
+  border-color: rgba(255, 178, 60, 0.5);
+  background: rgba(255, 178, 60, 0.1);
+}
+
 .tuning-badge {
   font-size: 11px;
   letter-spacing: 0.1em;
@@ -159,6 +198,19 @@ body {
   margin-top: 2px;
 }
 
+/* A stack can be any number of notes, so it wraps instead of running off the
+   side of the phone. */
+.parts.is-stack {
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  max-width: 100%;
+}
+
+.parts.is-stack .part {
+  min-width: 0;
+}
+
 .part {
   display: flex;
   flex-direction: column;
@@ -188,6 +240,269 @@ body {
   opacity: 0.75;
   text-align: center;
   min-height: 1.2em;
+}
+
+/* --- tuner ---------------------------------------------------------------- */
+
+.stage-tune {
+  justify-content: flex-start;
+  padding: 10px 12px;
+  overflow-y: auto;
+}
+
+/* auto margins rather than `justify-content: center`, which clips the top of
+   an overflowing flex child instead of letting it scroll. */
+.tune {
+  width: min(460px, 100%);
+  margin: auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+}
+
+.tune-modes {
+  align-self: center;
+}
+
+.tune-modes .seg {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  min-width: 0;
+  padding: 8px 16px;
+}
+
+.tune-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.tune-note {
+  font-family: var(--serif);
+  font-size: clamp(56px, 20vw, 96px);
+  line-height: 1.05;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 30px rgba(255, 178, 60, 0.25);
+}
+
+.tune-cents {
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+  min-height: 1.3em;
+}
+
+.tune-hz {
+  font-size: 11.5px;
+  color: var(--ink-dim);
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+  min-height: 1.3em;
+}
+
+/* The dial. A window either side of centre marks the range inside which the
+   chord actually locks — a needle you have to read a number off is no use to
+   someone singing at the same time. */
+.dial {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.dial-track {
+  position: relative;
+  height: 34px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.dial-track.slim {
+  height: 18px;
+  border-radius: 6px;
+}
+
+.dial-window {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 44%;
+  width: 12%;
+  background: rgba(111, 211, 155, 0.13);
+  border-left: 1px solid rgba(111, 211, 155, 0.3);
+  border-right: 1px solid rgba(111, 211, 155, 0.3);
+}
+
+.dial-tick {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: rgba(236, 223, 194, 0.16);
+}
+
+.dial-tick-mid {
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  background: rgba(236, 223, 194, 0.4);
+}
+
+.dial-needle {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 50%;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 999px;
+  background: var(--ink-dim);
+  box-shadow: 0 0 10px currentColor;
+}
+
+.dial.is-locked .dial-window {
+  background: rgba(111, 211, 155, 0.24);
+}
+
+.dial-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  opacity: 0.55;
+  margin-top: 5px;
+}
+
+.drift {
+  width: 100%;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(217, 180, 106, 0.16);
+  text-align: center;
+}
+
+.drift-label {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--brass-dim);
+  margin-bottom: 5px;
+}
+
+.drift-value {
+  font-size: 13px;
+  color: var(--brass);
+  font-variant-numeric: tabular-nums;
+}
+
+.drift-reset {
+  flex: 0 0 auto;
+  margin-top: 10px;
+  padding: 6px 14px;
+  font-size: 11.5px;
+}
+
+/* --- tuner, whole chord --------------------------------------------------- */
+
+.chord-panel {
+  width: 100%;
+  align-items: stretch;
+  border-radius: 14px;
+  padding: 12px;
+  transition: box-shadow 0.3s;
+}
+
+/* Every part inside the window at once. This is the thing you're chasing. */
+.chord-panel.is-ringing {
+  box-shadow:
+    0 0 0 1px rgba(111, 211, 155, 0.4),
+    0 0 34px rgba(111, 211, 155, 0.22);
+}
+
+.chord-title {
+  font-family: var(--serif);
+  font-size: 19px;
+  color: var(--brass);
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.chord-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chord-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.chord-row-head .part-name {
+  flex: 0 0 auto;
+  min-width: 38px;
+}
+
+.chord-row-head .part-note {
+  flex: 1 1 auto;
+  font-size: 14px;
+}
+
+.part-flag {
+  flex: 0 0 auto;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brass-dim);
+  opacity: 0.8;
+}
+
+.part-cents {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.tune-hint {
+  text-align: center;
+  margin-top: 12px;
+}
+
+.tune-blocked {
+  text-align: center;
+  padding: 24px 8px;
+  font-size: 13px;
+  color: #e88b6d;
+}
+
+.reference {
+  width: 100%;
+  padding: 15px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.reference.is-on {
+  color: var(--amber);
+  border-color: rgba(255, 178, 60, 0.5);
+  background: rgba(255, 178, 60, 0.12);
 }
 
 /* --- breath meter --------------------------------------------------------- */
@@ -546,10 +861,25 @@ body {
 /* Short screens (a phone in landscape on a music stand) lose the chrome
    before they lose the instrument. */
 @media (max-height: 620px) {
-  .topbar,
   .parts,
   .hint-line {
     display: none;
+  }
+  /* The bar itself stays — losing it would take the tuner with it — but
+     everything on it that is only decoration goes. */
+  .topbar {
+    padding: 6px 16px 0;
+  }
+  .wordmark,
+  .tuning-badge {
+    display: none;
+  }
+  .tune {
+    gap: 10px;
+  }
+  .drift {
+    margin-top: 8px;
+    padding-top: 8px;
   }
   .tray {
     padding-top: 10px;

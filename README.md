@@ -26,6 +26,32 @@ blowing apart from singing and from its own speaker using spectral flatness:
 breath is broadband noise, voices and reeds are harmonic. Press-and-hold always
 works too.
 
+Nobody blows a perfectly steady stream at a phone, so the gate has a memory:
+when it closes, the pressure is held and allowed to sag rather than dropped, and
+a gap shorter than that hang sounds like a reed coasting instead of a switch
+being flicked. How long it hangs is yours to set, from **Crisp** to **Legato**.
+
+**The tuner.** A pitch pipe can't tell you whether the note you sang back was
+the one it gave you. Tap the tuning fork in the corner and it will.
+
+*One voice* names what you're singing and shows how far off it is, in cents,
+with a needle you can read while you're still singing. It also keeps a running
+average — the flat-drift number, which is how you find out that the chorus sagged
+fourteen cents over a run-through.
+
+*Whole chord* is the interesting one. Pick a chord on the pipe, sing it, and
+every part gets its own meter: who's flat, who's sharp, who isn't there. The
+whole panel lights up when all four are locked in. Because the pipe already
+knows what the chord is *meant* to be, this doesn't have to solve blind
+four-part transcription — it only has to look in the right places, which is both
+tractable and the actual question a director has.
+
+**Stack.** The `⁘` chord button turns the disc into a note picker: tap holes to
+stack them, tap again to lift one an octave, tap once more to drop it. Any set
+of notes you like, sounded together — a diminished chord, two notes to check an
+interval, the whole scale at once. The stack is remembered, and the tuner will
+listen for it just like a preset chord.
+
 **Chord Bloom.** Give the whole four-part chord instead of blowing four notes in
 a row. Major, barbershop 7th, minor 7th and major 6th, voiced Bass / Bari /
 Lead / Tenor with the selected pitch as the bass. Each part's actual note is
@@ -108,17 +134,29 @@ force the built-in microphone instead. And a full chorus is spectrally
 indistinguishable from broadband noise, so breath mode can misfire if it is
 left on mid-song.
 
+Two more about the tuner. Barbershop voicings collide with themselves: the
+lead's octave sits exactly on the bass's second harmonic, and the bari's fifth
+puts its own second harmonic on the bass's third. Each part is therefore
+measured at the lowest harmonic of its own that nothing else lands on — which
+usually exists, and when it doesn't the row says **shared overtone** rather than
+attributing a combined reading to one singer. And the reference tone is dead on
+pitch and far louder at the microphone than anyone singing, so holding it pauses
+the readings instead of quietly measuring the app against itself.
+
 ## Layout
 
 ```
 src/
   audio/
     engine.ts     reed synthesis, master chain, hall mode, detent clicks
+    mic.ts        opening a capture track, and the platform quirks in doing so
     breath.ts     microphone gate — energy + spectral flatness
+    analyzer.ts   pitch detection (autocorrelation) and per-part chord tuning
   music/
     notes.ts      the thirteen holes, tuning maths, barbershop voicings
   ui/
     PitchDisc.tsx the brass disc (canvas)
+    TuneView.tsx  the tuner — one voice, and the whole chord
     ControlTray.tsx, BreathMeter.tsx, SettingsSheet.tsx
   hooks/          wake lock, persisted preferences
 ```
@@ -131,18 +169,17 @@ Everything runs client-side. No backend, no accounts, no analytics.
 |---|---|
 | Drag the ring | spin the pipe |
 | Tap a note | jump to it |
+| Tap a note in Stack | add it, lift it an octave, remove it |
 | Hold the middle | sound it |
 | Space | sound it (desktop) |
 | ← / → | previous / next note |
+| Tuning fork, top right | the tuner |
 
 ## Not built yet
 
-The agreed v1 is the pipe itself. Still to come:
-
-- **Cold Call** — a daily pitch you have to sing from memory with no reference,
-  scored in cents, with a Wordle-style shareable result grid.
-- **Pitch Lock** — live cents meter, hold the pitch to score.
 - **Setlist links** — a setlist encoded in the URL so a director shares one link
   and the whole chorus has the same starting pitches.
 - **Tag library** — the four starting notes for a stack of barbershop tags.
-- **Flat-drift report** — how far the chorus sagged over a run-through.
+- **Cold Call** — a daily pitch you have to sing from memory with no reference,
+  scored in cents, with a Wordle-style shareable result grid.
+- **Pitch Lock** — hold a pitch against the clock to score.

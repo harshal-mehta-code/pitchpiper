@@ -18,7 +18,14 @@
  * looking the way we expect.
  */
 
-import { setAudioSessionType } from './engine'
+import {
+  closeMicrophone,
+  isAppleMobile,
+  listAudioInputs,
+  openMicrophone,
+} from './mic'
+
+export { prefersPuffMode } from './mic'
 
 export type BreathStatus =
   | 'idle'
@@ -38,6 +45,12 @@ export interface BreathFrame {
   noisiness: number
   /** True while the gate is open — i.e. we believe you are blowing. */
   blowing: boolean
+  /**
+   * True while the note is being carried through a gap in the breath rather
+   * than driven by it. The meter dims instead of going cold, so a held note
+   * with no visible input still looks deliberate.
+   */
+  sustaining: boolean
   /** Current gate threshold, so the meter can draw the trigger line. */
   threshold: number
 }
@@ -107,34 +120,25 @@ const ARM_SETTLE_MS = 400
 const REARM_CALIBRATION_MS = 420
 
 /**
- * Apple's mobile platforms, however the browser is badged.
+ * How long the reed keeps speaking after the breath stops, at the two ends of
+ * the smoothing control.
  *
- * Every browser on iOS and iPadOS is WebKit underneath, so this is a platform
- * test rather than a browser test. It exists for exactly one reason: those
- * platforms drop playback volume for as long as a capture track is live, and
- * no web API can override the output port. Feature detection would be
- * preferable and isn't available — `navigator.audioSession` only appears in
- * Safari 17, while the routing behaviour goes back much further.
- */
-function isAppleMobile(): boolean {
-  const ua = navigator.userAgent
-  if (/iPhone|iPad|iPod/.test(ua)) return true
-  // iPadOS 13+ reports itself as a Mac; touch points give it away.
-  return /Macintosh/.test(ua) && navigator.maxTouchPoints > 1
-}
-
-/**
- * Whether continuous breath control is worth having on as the default.
+ * Nobody blows a perfectly steady stream at a phone. Breath breaks for a
+ * moment when you re-set your mouth, when you turn your head, when a consonant
+ * gets in the way — and a gate with no memory turns every one of those into the
+ * note being switched off and on again. So when the gate closes, the pressure
+ * is *held* for a moment and allowed to sag rather than being dropped: a gap
+ * shorter than the hang reads as the reed coasting, which is what a real reed
+ * does, and only a real stop actually stops it.
  *
- * Everywhere except Apple's mobile platforms it simply works, and following
- * your breath the way a real reed does is the better instrument — so that is
- * the default there. On iOS it is still offered, and still works; it is just
- * quiet through the built-in speaker, which is fine on headphones and not fine
- * in front of a chorus.
+ * The floor is deliberately not zero. Even at the crispest setting a couple of
+ * frames of hang costs nothing and removes the buzzing that a gate sitting
+ * exactly on its threshold otherwise produces.
  */
-export function prefersPuffMode(): boolean {
-  return isAppleMobile()
-}
+const HANG_MIN_MS = 60
+const HANG_MAX_MS = 460
+/** Fraction of the held pressure still left at the end of the hang. */
+const HANG_SAG = 0.45
 
 export class BreathDetector {
   private stream: MediaStream | null = null
@@ -171,8 +175,18 @@ export class BreathDetector {
   private hardRelease = false
   private strategyResolved = false
 
+  /** Pressure at the moment the gate last closed, and when that was. */
+  private heldPressure = 0
+  private closedAt = 0
+
   /** User-facing sensitivity, 0..1. Higher = easier to trigger. */
   sensitivity = 0.65
+
+  /**
+   * User-facing smoothing, 0..1. Higher rides through longer gaps in the
+   * breath and falls away more gently; lower tracks every flicker.
+   */
+  smoothing = 0.45
 
   /** Preferred input device, if the person has picked one. */
   deviceId: string | null = null
@@ -192,77 +206,17 @@ export class BreathDetector {
   async start(context: AudioContext): Promise<boolean> {
     if (this.stream) return true
 
-    if (!navigator.mediaDevices?.getUserMedia) {
-      this.setStatus(
-        'unsupported',
-        window.isSecureContext === false
-          ? 'Microphone needs a secure (https) connection.'
-          : 'This browser has no microphone access.',
-      )
-      return false
-    }
-
     this.setStatus('requesting')
 
-    // Safari will not open the microphone while the page's audio session is
-    // declared playback-only, which is how we start up so the ringer switch
-    // can't silence the pipe. Move it before asking.
-    setAudioSessionType('play-and-record')
-
-    // Every one of these processors is designed to remove exactly the signal
-    // we want: noise suppression will happily erase breath as "background
-    // noise", and AGC fights the pressure mapping. Safari is fussier about
-    // audio constraints than Chrome and fails the whole call over one it
-    // dislikes, so ask for the ideal setup and walk down from there.
-    const raw = {
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
-    }
-    const device = this.deviceId ? { deviceId: { exact: this.deviceId } } : {}
-    const attempts: MediaStreamConstraints[] = [
-      { audio: { ...device, ...raw, channelCount: 1 } },
-      { audio: { ...device, ...raw } },
-      { audio: { ...device } },
-      // Last resort drops the device pin too, so a headset that has since
-      // disconnected can't lock the feature out entirely.
-      { audio: true },
-    ]
-
-    let lastError: unknown = null
-    for (const constraints of attempts) {
-      try {
-        this.stream = await navigator.mediaDevices.getUserMedia(constraints)
-        break
-      } catch (err) {
-        lastError = err
-        // A refusal is final. Retrying just re-prompts for something the
-        // person has already declined.
-        const name = (err as DOMException)?.name
-        if (name === 'NotAllowedError' || name === 'SecurityError') break
-      }
-    }
-
-    if (!this.stream) {
-      setAudioSessionType('playback')
-      const name = (lastError as DOMException)?.name ?? ''
-      if (name === 'NotAllowedError' || name === 'SecurityError') {
-        this.setStatus('denied')
-      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-        this.setStatus('error', 'No microphone found on this device.')
-      } else if (name === 'NotReadableError' || name === 'TrackStartError') {
-        this.setStatus('error', 'Another app is holding the microphone.')
-      } else {
-        // Surface whatever the browser actually said. A generic "unavailable"
-        // is impossible to act on and impossible to debug remotely.
-        const msg = (lastError as Error)?.message
-        this.setStatus(
-          'error',
-          [name, msg].filter(Boolean).join(': ') || 'Could not open the microphone.',
-        )
-      }
+    const result = await openMicrophone(this.deviceId)
+    if (!result.stream) {
+      if (result.kind === 'denied') this.setStatus('denied')
+      else if (result.kind === 'unsupported') {
+        this.setStatus('unsupported', result.detail)
+      } else this.setStatus('error', result.detail)
       return false
     }
+    this.stream = result.stream
 
     this.ctx = context
     this.source = context.createMediaStreamSource(this.stream)
@@ -284,6 +238,8 @@ export class BreathDetector {
     this.smoothed = 0
     this.gateOpen = false
     this.paused = false
+    this.heldPressure = 0
+    this.closedAt = 0
     this.armedAt = performance.now()
     void this.resolveReleaseStrategy()
     this.calibrationSamples = []
@@ -304,15 +260,7 @@ export class BreathDetector {
    * Input devices to choose from. Labels only exist once permission has been
    * granted, so this is worth calling after the microphone is already open.
    */
-  static async listInputs(): Promise<MediaDeviceInfo[]> {
-    if (!navigator.mediaDevices?.enumerateDevices) return []
-    try {
-      const all = await navigator.mediaDevices.enumerateDevices()
-      return all.filter((d) => d.kind === 'audioinput')
-    } catch {
-      return []
-    }
-  }
+  static listInputs = listAudioInputs
 
   stop() {
     cancelAnimationFrame(this.raf)
@@ -320,13 +268,12 @@ export class BreathDetector {
     this.source?.disconnect()
     this.source = null
     this.analyser = null
-    // Releasing the tracks is what clears the browser's recording indicator.
-    this.stream?.getTracks().forEach((t) => t.stop())
+    if (this.stream) closeMicrophone(this.stream)
     this.stream = null
     this.gateOpen = false
     this.paused = false
-    // Back to playback-only, so the ringer switch stops mattering again.
-    setAudioSessionType('playback')
+    this.heldPressure = 0
+    this.closedAt = 0
     this.setStatus('idle')
   }
 
@@ -385,6 +332,8 @@ export class BreathDetector {
       this.armedAt = performance.now()
       this.needsQuiet = true
       this.quietFrames = 0
+      this.heldPressure = 0
+      this.closedAt = 0
       this.stream.getTracks().forEach((t) => (t.enabled = true))
       this.setStatus('listening')
       return
@@ -435,6 +384,7 @@ export class BreathDetector {
         energy,
         noisiness,
         blowing: false,
+        sustaining: false,
         threshold: this.threshold(),
       })
       return
@@ -469,11 +419,13 @@ export class BreathDetector {
     if (now - this.armedAt < ARM_SETTLE_MS) {
       this.gateOpen = false
       this.smoothed = 0
+      this.heldPressure = 0
       this.onFrame({
         pressure: 0,
         energy,
         noisiness,
         blowing: false,
+        sustaining: false,
         threshold,
       })
       return
@@ -492,11 +444,13 @@ export class BreathDetector {
       } else {
         this.gateOpen = false
         this.smoothed = 0
+        this.heldPressure = 0
         this.onFrame({
           pressure: 0,
           energy,
           noisiness,
           blowing: false,
+          sustaining: false,
           threshold,
         })
         return
@@ -530,15 +484,36 @@ export class BreathDetector {
     }
 
     let target = 0
+    let sustaining = false
     if (this.gateOpen) {
       const span = Math.max(1e-6, this.ceiling - threshold * 0.55)
       target = Math.min(1, Math.max(0, (energy - threshold * 0.55) / span))
+      this.heldPressure = target
+      this.closedAt = 0
+    } else if (this.heldPressure > 0) {
+      // The gate has just shut. Carry the note rather than cutting it: hold
+      // the pressure it was last driven at and let it sag, so a breath that
+      // breaks for a moment sounds like a reed coasting instead of a switch
+      // being flicked. Bounded, so a real stop still stops.
+      if (this.closedAt === 0) this.closedAt = now
+      const hang = HANG_MIN_MS + (HANG_MAX_MS - HANG_MIN_MS) * this.smoothing
+      const elapsed = now - this.closedAt
+      if (elapsed < hang) {
+        target = this.heldPressure * (1 - HANG_SAG * (elapsed / hang))
+        sustaining = true
+      } else {
+        this.heldPressure = 0
+      }
     }
 
-    // Asymmetric smoothing: quick to respond, slower to fall away, which is
-    // both how a reed behaves and forgiving of momentary dropouts.
-    const coeff = target > this.smoothed ? 0.45 : 0.16
-    this.smoothed += (target - this.smoothed) * coeff
+    // Asymmetric: quick to respond, slower to fall away, which is both how a
+    // reed behaves and forgiving of the moment-to-moment unevenness of real
+    // breath. The fall is what the smoothing control mostly moves — past the
+    // hang, this is the difference between a note that stops and one that
+    // fades.
+    const rise = 0.5 - 0.12 * this.smoothing
+    const fall = 0.3 - 0.2 * this.smoothing
+    this.smoothed += (target - this.smoothed) * (target > this.smoothed ? rise : fall)
     if (this.smoothed < 0.002) this.smoothed = 0
 
     this.onFrame({
@@ -546,6 +521,7 @@ export class BreathDetector {
       energy,
       noisiness,
       blowing: this.gateOpen,
+      sustaining: sustaining && this.smoothed > 0,
       threshold,
     })
   }

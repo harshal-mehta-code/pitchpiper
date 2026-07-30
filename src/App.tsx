@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { PitchDisc } from './ui/PitchDisc'
 import { ControlTray } from './ui/ControlTray'
 import { BreathMeter } from './ui/BreathMeter'
 import { SettingsSheet } from './ui/SettingsSheet'
+import { TuneView, type TuneMode } from './ui/TuneView'
 import { usePersistentState } from './hooks/usePersistentState'
 import { useWakeLock } from './hooks/useWakeLock'
 import {
@@ -11,6 +12,7 @@ import {
   type BreathFrame,
   type BreathStatus,
 } from './audio/breath'
+import { listAudioInputs } from './audio/mic'
 import {
   ensureAudio,
   getAnalyser,
@@ -22,13 +24,19 @@ import {
 } from './audio/engine'
 import {
   buildChord,
+  buildStack,
   chordById,
   midiToName,
   noteLabel,
   PIPE_NOTES,
+  STACK_ID,
+  type ChordTone,
 } from './music/notes'
 
 type SoundMode = 'hold' | 'breath' | 'puff'
+
+/** Which screen is up. The pipe is always where you land. */
+type View = 'pipe' | 'tune'
 
 /**
  * How breath drives the pipe.
@@ -62,17 +70,45 @@ const PUFF_SUSTAIN_MAX_MS = 3100
 /** Breathing room after a note before we re-open the microphone. */
 const REARM_DELAY_MS = 220
 
+interface SoundParams {
+  noteIndex: number
+  chordId: string
+  octaveShift: number
+  a4: number
+  stack: number[]
+  useFlats: boolean
+}
+
+/**
+ * What the pipe would sound right now.
+ *
+ * One function rather than two branches everywhere, because the notes on screen
+ * and the notes coming out of the speaker drifting apart is the one bug in this
+ * app nobody would ever report — they'd just quietly stop trusting it.
+ */
+function tonesFor(p: SoundParams): ChordTone[] {
+  if (p.chordId === STACK_ID) {
+    // An empty stack still sounds the selected note, so the hub is never dead.
+    const offsets = p.stack.length ? p.stack : [PIPE_NOTES[p.noteIndex].index]
+    return buildStack(offsets, p.octaveShift, p.a4, p.useFlats)
+  }
+  return buildChord(PIPE_NOTES[p.noteIndex], chordById(p.chordId), p.octaveShift, p.a4)
+}
+
 export default function App() {
   // --- persisted preferences ---------------------------------------------
   const [noteIndex, setNoteIndex] = usePersistentState('note', 7) // C
   const [chordId, setChordId] = usePersistentState('chord', 'unison')
+  const [stack, setStack] = usePersistentState<number[]>('stack', [])
   const [octaveShift, setOctaveShift] = usePersistentState('octave', 0)
   const [hallMode, setHallModeState] = usePersistentState('hall', false)
   const [useFlats, setUseFlats] = usePersistentState('flats', true)
   const [a4, setA4] = usePersistentState('a4', 440)
   const [volume, setVolume] = usePersistentState('volume', 0.85)
   const [sensitivity, setSensitivity] = usePersistentState('sensitivity', 0.65)
+  const [smoothing, setSmoothing] = usePersistentState('breathSmoothing', 0.45)
   const [keepAwake, setKeepAwake] = usePersistentState('awake', true)
+  const [tuneMode, setTuneMode] = usePersistentState<TuneMode>('tuneMode', 'voice')
   const [breathResponse, setBreathResponse] = usePersistentState<BreathResponse>(
     'breathResponse',
     prefersPuffMode() ? 'puff' : 'live',
@@ -83,6 +119,7 @@ export default function App() {
   )
 
   // --- session state -------------------------------------------------------
+  const [view, setView] = useState<View>('pipe')
   const [breathMode, setBreathMode] = useState(false)
   const [breathStatus, setBreathStatus] = useState<BreathStatus>('idle')
   const [breathDetail, setBreathDetail] = useState<string | undefined>()
@@ -102,8 +139,15 @@ export default function App() {
   const soundModeRef = useRef<SoundMode | null>(null)
   const breathFrameRef = useRef<BreathFrame | null>(null)
 
-  const paramsRef = useRef({ noteIndex, chordId, octaveShift, a4 })
-  paramsRef.current = { noteIndex, chordId, octaveShift, a4 }
+  const paramsRef = useRef<SoundParams>({
+    noteIndex,
+    chordId,
+    octaveShift,
+    a4,
+    stack,
+    useFlats,
+  })
+  paramsRef.current = { noteIndex, chordId, octaveShift, a4, stack, useFlats }
   const settingsRef = useRef({ hallMode, volume })
   settingsRef.current = { hallMode, volume }
 
@@ -113,13 +157,12 @@ export default function App() {
   const responseRef = useRef(breathResponse)
   responseRef.current = breathResponse
   const puffTimersRef = useRef<{ end?: number; rearm?: number }>({})
+  /** Whether breath mode was on when the tuner took the microphone away. */
+  const breathWasOnRef = useRef(false)
 
   // --- sounding ------------------------------------------------------------
   const startSound = useCallback((mode: SoundMode, strength = 1) => {
-    const { noteIndex: n, chordId: c, octaveShift: o, a4: tuning } =
-      paramsRef.current
-    const chord = chordById(c)
-    const tones = buildChord(PIPE_NOTES[n], chord, o, tuning)
+    const tones = tonesFor(paramsRef.current)
 
     soundRef.current?.release()
     soundRef.current = playChord({
@@ -175,13 +218,36 @@ export default function App() {
   }, [rearmBreath, stopSound])
 
   // Re-voice a sounding note when the pitch under it changes, so spinning the
-  // disc mid-note actually moves the pitch instead of being ignored.
+  // disc — or adding a note to the stack — moves the sound instead of being
+  // ignored until the next press.
   useEffect(() => {
     if (soundModeRef.current) startSound(soundModeRef.current)
-  }, [noteIndex, chordId, octaveShift, a4, startSound])
+  }, [noteIndex, chordId, octaveShift, a4, stack, startSound])
 
   useEffect(() => setHallMode(hallMode), [hallMode])
   useEffect(() => setMasterVolume(volume), [volume])
+
+  // --- the stack -----------------------------------------------------------
+
+  /**
+   * A hole cycles off → in → an octave up → off.
+   *
+   * Three states on one tap keeps voicing control on the instrument itself. The
+   * alternative — a separate list of notes with octave steppers beside each —
+   * is how every other app does it, and it is a worse thing to use in a hurry.
+   */
+  const toggleStack = useCallback(
+    (index: number) => {
+      setStack((prev) => {
+        const hasBase = prev.includes(index)
+        const hasUp = prev.includes(index + 12)
+        if (hasBase) return [...prev.filter((v) => v !== index), index + 12].sort(byValue)
+        if (hasUp) return prev.filter((v) => v !== index + 12)
+        return [...prev, index].sort(byValue)
+      })
+    },
+    [setStack],
+  )
 
   // --- breath --------------------------------------------------------------
 
@@ -257,9 +323,10 @@ export default function App() {
       )
     }
     detectorRef.current.sensitivity = sensitivity
+    detectorRef.current.smoothing = smoothing
     detectorRef.current.deviceId = micDeviceId
     return detectorRef.current
-  }, [micDeviceId, sensitivity])
+  }, [micDeviceId, sensitivity, smoothing])
 
   const handleBreathMode = useCallback(
     (on: boolean) => {
@@ -275,7 +342,7 @@ export default function App() {
         void det.start(ctx).then((ok) => {
           // Device labels are blank until permission has been granted, so the
           // list is only worth fetching once the microphone is actually open.
-          if (ok) void BreathDetector.listInputs().then(setMicInputs)
+          if (ok) void listAudioInputs().then(setMicInputs)
         })
       } else {
         clearPuffTimers()
@@ -307,6 +374,10 @@ export default function App() {
     if (detectorRef.current) detectorRef.current.sensitivity = sensitivity
   }, [sensitivity])
 
+  useEffect(() => {
+    if (detectorRef.current) detectorRef.current.smoothing = smoothing
+  }, [smoothing])
+
   // Switching response mode mid-note would leave a voice stranded.
   useEffect(() => {
     clearPuffTimers()
@@ -324,6 +395,37 @@ export default function App() {
     },
     [clearPuffTimers],
   )
+
+  // --- views ---------------------------------------------------------------
+
+  /**
+   * Only one feature may hold the microphone at a time, and the tuner needs it
+   * for as long as it is on screen. Breath mode stands down on the way in and
+   * is put back on the way out.
+   */
+  const toggleTuner = useCallback(() => {
+    if (view === 'tune') {
+      setView('pipe')
+      return
+    }
+    // Unlock the audio context inside the tap: the tuner asks for the
+    // microphone from a layout effect, and Safari counts that as still being
+    // in the gesture only if nothing has awaited in between.
+    getAudio()
+    breathWasOnRef.current = breathMode
+    if (breathMode) handleBreathMode(false)
+    stopSound()
+    setView('tune')
+  }, [breathMode, handleBreathMode, stopSound, view])
+
+  // A layout effect, so the tuner's stream is already released when breath mode
+  // re-acquires — and so the re-acquire still happens inside the tap that
+  // closed the tuner, which is what Safari requires.
+  useLayoutEffect(() => {
+    if (view !== 'pipe' || !breathWasOnRef.current) return
+    breathWasOnRef.current = false
+    handleBreathMode(true)
+  }, [view, handleBreathMode])
 
   // --- glow ----------------------------------------------------------------
   // Driven from the output signal itself rather than from an envelope we track
@@ -361,6 +463,8 @@ export default function App() {
       if (e.code === 'Space') {
         e.preventDefault()
         onHubDown()
+      } else if (view !== 'pipe') {
+        return
       } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
         e.preventDefault()
         setNoteIndex((i) => Math.min(PIPE_NOTES.length - 1, i + 1))
@@ -378,7 +482,7 @@ export default function App() {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
     }
-  }, [onHubDown, onHubUp, setNoteIndex, settingsOpen])
+  }, [onHubDown, onHubUp, setNoteIndex, settingsOpen, view])
 
   // A drag on the disc makes detent clicks before anything has ever been
   // sounded, so unlock audio on the very first touch anywhere.
@@ -394,24 +498,44 @@ export default function App() {
     [useFlats],
   )
   const chord = chordById(chordId)
+  const isStack = chordId === STACK_ID
   const note = PIPE_NOTES[noteIndex]
   const centerLabel = noteLabel(note, useFlats)
-  const tones = buildChord(note, chord, octaveShift, a4)
-  const centerSub =
-    chord.id === 'unison'
+  // Memoised because the tuner treats a change of targets as a reason to throw
+  // its readings away — a fresh array every render would reset it forever.
+  const tones = useMemo(
+    () => tonesFor({ noteIndex, chordId, octaveShift, a4, stack, useFlats }),
+    [noteIndex, chordId, octaveShift, a4, stack, useFlats],
+  )
+  const centerSub = isStack
+    ? stack.length
+      ? `Stack · ${stack.length}`
+      : 'Tap the holes'
+    : chord.id === 'unison'
       ? `${Math.round(tones[0].freq * 10) / 10} Hz`
       : chord.label
+  const chordLabel = isStack
+    ? stack.length
+      ? `Custom stack · ${stack.length} notes`
+      : 'Custom stack — tap holes on the pipe'
+    : chord.id === 'unison'
+      ? `${centerLabel} alone`
+      : `${centerLabel} ${chord.label}`
 
   const handleNoteIndexChange = useCallback(
     (i: number) => setNoteIndex(i),
     [setNoteIndex],
   )
 
-  const hint = !breathMode
-    ? 'Hold the middle. Spin the ring to change note.'
-    : breathResponse === 'puff'
-      ? 'One puff at the bottom of your phone — or hold the middle'
-      : 'Blow at your phone — or hold the middle'
+  const hint = isStack
+    ? 'Tap holes to stack them. Tap again for an octave up.'
+    : !breathMode
+      ? 'Hold the middle. Spin the ring to change note.'
+      : breathResponse === 'puff'
+        ? 'One puff at the bottom of your phone — or hold the middle'
+        : 'Blow at your phone — or hold the middle'
+
+  const tuning = view === 'tune'
 
   return (
     <div className="app">
@@ -419,39 +543,69 @@ export default function App() {
         <div className="wordmark">
           Pitch<span>Piper</span>
         </div>
-        <div className="tuning-badge">A={a4}</div>
+        <div className="topbar-right">
+          <div className="tuning-badge">A={a4}</div>
+          <button
+            className={`icon-btn${tuning ? ' is-on' : ''}`}
+            onClick={toggleTuner}
+            aria-pressed={tuning}
+            aria-label={tuning ? 'Back to the pipe' : 'Tuner'}
+            title={tuning ? 'Back to the pipe' : 'Tuner — hear how you’re doing'}
+          >
+            {tuning ? <BackIcon /> : <ForkIcon />}
+          </button>
+        </div>
       </header>
 
-      <main className="stage">
-        <PitchDisc
-          noteIndex={noteIndex}
-          onNoteIndexChange={handleNoteIndexChange}
-          labels={labels}
-          centerLabel={centerLabel}
-          centerSub={centerSub}
-          glowRef={glowRef}
-          hubActive={hubActive}
-          onHubDown={onHubDown}
-          onHubUp={onHubUp}
-        />
-        {/* Each part's actual note, so a director can just read them out
-            instead of working the chord out in their head. */}
-        {tones.length > 1 && (
-          <div className="parts">
-            {tones.map((t) => (
-              <div className="part" key={t.part}>
-                <span className="part-name">{t.part}</span>
-                <span className="part-note">
-                  {midiToName(t.midi, useFlats)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-        <p className="hint-line">{hint}</p>
-      </main>
+      {tuning ? (
+        <main className="stage stage-tune">
+          <TuneView
+            tones={tones}
+            chordLabel={chordLabel}
+            a4={a4}
+            useFlats={useFlats}
+            micDeviceId={micDeviceId}
+            mode={tuneMode}
+            onMode={setTuneMode}
+            onReferenceDown={onHubDown}
+            onReferenceUp={onHubUp}
+          />
+        </main>
+      ) : (
+        <main className="stage">
+          <PitchDisc
+            noteIndex={noteIndex}
+            onNoteIndexChange={handleNoteIndexChange}
+            labels={labels}
+            centerLabel={centerLabel}
+            centerSub={centerSub}
+            glowRef={glowRef}
+            hubActive={hubActive}
+            onHubDown={onHubDown}
+            onHubUp={onHubUp}
+            stack={isStack ? stack : undefined}
+            stackMode={isStack}
+            onToggleStack={toggleStack}
+          />
+          {/* Each part's actual note, so a director can just read them out
+              instead of working the chord out in their head. */}
+          {tones.length > 1 && (
+            <div className={`parts${isStack ? ' is-stack' : ''}`}>
+              {tones.map((t) => (
+                <div className="part" key={`${t.part}-${t.midi}`}>
+                  {!isStack && <span className="part-name">{t.part}</span>}
+                  <span className="part-note">
+                    {isStack ? t.part : midiToName(t.midi, useFlats)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="hint-line">{hint}</p>
+        </main>
+      )}
 
-      {breathMode && (
+      {breathMode && !tuning && (
         <BreathMeter
           status={breathStatus}
           detail={breathDetail}
@@ -470,6 +624,11 @@ export default function App() {
         breathMode={breathMode}
         onBreathMode={handleBreathMode}
         onOpenSettings={() => setSettingsOpen(true)}
+        compact={tuning}
+        // In the tuner the same picker chooses what is listened for and what
+        // the reference button gives you — which of those it is depends on
+        // which half of the tuner is up.
+        label={tuning ? (tuneMode === 'chord' ? 'Listening for' : 'Reference') : 'Chord'}
       />
 
       <SettingsSheet
@@ -483,6 +642,8 @@ export default function App() {
         onKeepAwake={setKeepAwake}
         sensitivity={sensitivity}
         onSensitivity={setSensitivity}
+        smoothing={smoothing}
+        onSmoothing={setSmoothing}
         breathMode={breathMode}
         onRecalibrate={() => detectorRef.current?.recalibrate()}
         volume={volume}
@@ -495,5 +656,26 @@ export default function App() {
         onMicDevice={handleMicDevice}
       />
     </div>
+  )
+}
+
+function byValue(a: number, b: number): number {
+  return a - b
+}
+
+function ForkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8.5 3v7.5a3.5 3.5 0 0 0 7 0V3" />
+      <path d="M12 14v7" />
+    </svg>
+  )
+}
+
+function BackIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M14.5 5.5 8 12l6.5 6.5" />
+    </svg>
   )
 }

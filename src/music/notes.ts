@@ -62,6 +62,15 @@ export function midiToName(midi: number, useFlats: boolean): string {
 }
 
 /**
+ * Name with its octave number, e.g. "E♭4". Worth the extra character in the
+ * tuner, where knowing whether you landed an octave out is the whole point.
+ */
+export function midiToLabel(midi: number, useFlats: boolean): string {
+  const n = Math.round(midi)
+  return `${midiToName(n, useFlats)}${Math.floor(n / 12) - 1}`
+}
+
+/**
  * Concert pitch is a setting, not a constant. Plenty of choruses tune to 442,
  * and anyone rehearsing with a piano that hasn't been touched since 1998 will
  * want to nudge it too.
@@ -138,12 +147,21 @@ export const CHORD_TYPES: ChordType[] = [
   },
 ]
 
+/**
+ * The custom stack. Not a chord type in the musical sense — it's whatever set
+ * of holes you've tapped, which is the escape hatch for everything the five
+ * presets don't cover: a diminished chord, an ii-V, two notes to check an
+ * interval, or a whole scale sounded at once for the fun of it.
+ */
+export const STACK_ID = 'stack'
+
 export function chordById(id: string): ChordType {
   return CHORD_TYPES.find((c) => c.id === id) ?? CHORD_TYPES[0]
 }
 
 export interface ChordTone {
-  part: VoicePart
+  /** Voice part for a preset voicing; the note's own name for a stack. */
+  part: string
   midi: number
   freq: number
 }
@@ -163,3 +181,29 @@ export function buildChord(
   if (chord.id === 'unison') return [tones[0]]
   return tones
 }
+
+/**
+ * Sound an arbitrary set of holes at once.
+ *
+ * A stack entry is a semitone offset from the bottom of the pipe, so 0..12 is
+ * the pipe as engraved and 13..24 is the same hole an octave up. Storing it
+ * that way rather than as {hole, octave} keeps the ordering, the de-duplication
+ * and the maths all trivial.
+ */
+export function buildStack(
+  offsets: number[],
+  octaveShift: number,
+  a4: number,
+  useFlats: boolean,
+): ChordTone[] {
+  const base = BASE_MIDI + octaveShift * 12
+  return [...new Set(offsets)]
+    .sort((a, b) => a - b)
+    .map((o) => {
+      const midi = base + o
+      return { part: midiToLabel(midi, useFlats), midi, freq: midiToFreq(midi, a4) }
+    })
+}
+
+/** Highest offset a stack entry can take: the top hole, an octave up. */
+export const MAX_STACK_OFFSET = SEMITONES_IN_PIPE - 1 + 12

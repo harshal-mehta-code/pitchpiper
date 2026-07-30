@@ -13,6 +13,8 @@ export interface SettingsSheetProps {
   onKeepAwake: (v: boolean) => void
   sensitivity: number
   onSensitivity: (v: number) => void
+  smoothing: number
+  onSmoothing: (v: number) => void
   breathMode: boolean
   onRecalibrate: () => void
   volume: number
@@ -180,6 +182,31 @@ export function SettingsSheet(props: SettingsSheetProps) {
           {props.breathMode && <MicDiagnostics frameRef={props.breathFrameRef} />}
         </Row>
 
+        <Row
+          label="Breath smoothing"
+          value={props.breathResponse === 'live' ? undefined : 'Follows breath only'}
+        >
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={props.smoothing}
+            disabled={props.breathResponse !== 'live'}
+            onChange={(e) => props.onSmoothing(Number(e.target.value))}
+          />
+          <div className="range-ends">
+            <span>Crisp</span>
+            <span>Legato</span>
+          </div>
+          <p className="hint">
+            Nobody blows a perfectly steady stream at a phone. Turn this up and
+            the reed carries on through the gaps — a break in the breath sounds
+            like the note coasting rather than switching off. Turn it down if
+            you want it to follow every flicker.
+          </p>
+        </Row>
+
         <Row label="Keep screen awake" value={props.keepAwake ? 'On' : 'Off'}>
           <div className="switch-row">
             <button
@@ -234,10 +261,14 @@ function MicDiagnostics({
       const el = ref.current
       if (!f || !el) return
       const ratio = f.threshold > 0 ? f.energy / f.threshold : 0
+      // Three states, not two: HOLDING is the smoothing carrying a note across
+      // a gap in the breath, and without it on screen that looks like a stuck
+      // note rather than a deliberate one.
+      const state = f.blowing ? 'BLOWING' : f.sustaining ? 'HOLDING' : 'closed'
       el.textContent =
         `level ${ratio.toFixed(2)}× trigger · ` +
         `breath-like ${f.noisiness.toFixed(2)} · ` +
-        (f.blowing ? 'BLOWING' : 'closed')
+        `${state} ${f.pressure.toFixed(2)}`
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)

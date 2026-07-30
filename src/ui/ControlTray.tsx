@@ -1,4 +1,4 @@
-import { CHORD_TYPES } from '../music/notes'
+import { CHORD_TYPES, STACK_ID } from '../music/notes'
 
 export interface ControlTrayProps {
   chordId: string
@@ -10,6 +10,14 @@ export interface ControlTrayProps {
   breathMode: boolean
   onBreathMode: (v: boolean) => void
   onOpenSettings: () => void
+  /**
+   * Drops the controls that only mean something while the pipe is the thing on
+   * screen. The chord picker stays, because in the tuner it chooses what is
+   * being listened for.
+   */
+  compact?: boolean
+  /** What the chord picker is doing right now. */
+  label?: string
 }
 
 export function ControlTray({
@@ -22,10 +30,12 @@ export function ControlTray({
   breathMode,
   onBreathMode,
   onOpenSettings,
+  compact,
+  label = 'Chord',
 }: ControlTrayProps) {
   return (
     <div className="tray">
-      <div className="tray-label">Chord</div>
+      <div className="tray-label">{label}</div>
       <div className="segmented" role="group" aria-label="Chord type">
         {CHORD_TYPES.map((c) => (
           <button
@@ -38,27 +48,39 @@ export function ControlTray({
             {c.short}
           </button>
         ))}
+        <button
+          className={`seg${chordId === STACK_ID ? ' is-on' : ''}`}
+          onClick={() => onChordId(STACK_ID)}
+          aria-pressed={chordId === STACK_ID}
+          title="Build your own — tap the holes you want"
+        >
+          ⁘
+        </button>
       </div>
 
       <div className="tray-row">
-        <button
-          className={`pill${breathMode ? ' is-on' : ''}`}
-          onClick={() => onBreathMode(!breathMode)}
-          aria-pressed={breathMode}
-        >
-          <MicIcon />
-          <span>Breath</span>
-        </button>
+        {!compact && (
+          <>
+            <button
+              className={`pill${breathMode ? ' is-on' : ''}`}
+              onClick={() => onBreathMode(!breathMode)}
+              aria-pressed={breathMode}
+            >
+              <MicIcon />
+              <span>Breath</span>
+            </button>
 
-        <button
-          className={`pill${hallMode ? ' is-on' : ''}`}
-          onClick={() => onHallMode(!hallMode)}
-          aria-pressed={hallMode}
-          title="Cut through a room full of singers"
-        >
-          <HallIcon />
-          <span>Hall</span>
-        </button>
+            <button
+              className={`pill${hallMode ? ' is-on' : ''}`}
+              onClick={() => onHallMode(!hallMode)}
+              aria-pressed={hallMode}
+              title="Cut through a room full of singers"
+            >
+              <HallIcon />
+              <span>Hall</span>
+            </button>
+          </>
+        )}
 
         <div className="pill pill-stepper" role="group" aria-label="Octave">
           <button

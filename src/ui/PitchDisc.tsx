@@ -37,6 +37,16 @@ export interface PitchDiscProps {
   hubActive: boolean
   onHubDown: () => void
   onHubUp: () => void
+  /**
+   * Stack mode. Semitone offsets from the bottom hole, so 0..12 is a hole as
+   * engraved and 13..24 is the same hole an octave up. Tapping the ring cycles
+   * a hole through off → in → an octave up → off, which is the whole of the
+   * interface for building a custom voicing: no extra panel, no note list, just
+   * the instrument with more of it lit.
+   */
+  stack?: number[]
+  stackMode?: boolean
+  onToggleStack?: (index: number) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -231,6 +241,9 @@ export function PitchDisc({
   hubActive,
   onHubDown,
   onHubUp,
+  stack,
+  stackMode,
+  onToggleStack,
 }: PitchDiscProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -254,8 +267,15 @@ export function PitchDisc({
   const centerRef = useRef({ label: centerLabel, sub: centerSub })
   const ringsRef = useRef<{ t: number }[]>([])
 
+  const stackRef = useRef<number[]>(stack ?? [])
+  const stackModeRef = useRef(false)
+  const toggleRef = useRef(onToggleStack)
+
   hubActiveRef.current = hubActive
   centerRef.current = { label: centerLabel, sub: centerSub }
+  stackRef.current = stack ?? []
+  stackModeRef.current = stackMode ?? false
+  toggleRef.current = onToggleStack
 
   // Label i is engraved at disc-local angle `i * STEP - π/2`, so after the disc
   // is rotated by `angle` it appears on screen at `i * STEP - π/2 + angle`.
@@ -423,6 +443,60 @@ export function PitchDisc({
       g.save()
       g.rotate(angleRef.current)
       g.drawImage(face, -R, -R)
+
+      // --- stacked holes ---------------------------------------------------
+      // Drawn inside the rotation so the marks stay welded to their holes, and
+      // over the pre-rendered face rather than into it, because the set changes
+      // on every tap and re-engraving the whole disc for that would be absurd.
+      const marks = stackRef.current
+      if (marks.length) {
+        const holeR = R * 0.545
+        const rr = R * 0.052
+        for (let i = 0; i < NOTE_COUNT; i++) {
+          const inStack = marks.includes(i)
+          const raised = marks.includes(i + 12)
+          if (!inStack && !raised) continue
+          const a = i * STEP - Math.PI / 2
+          const x = Math.cos(a) * holeR
+          const y = Math.sin(a) * holeR
+
+          // The hole reads as *open* — lit from within, the way a hole you're
+          // blowing through would be.
+          const lit = g.createRadialGradient(x, y, 0, x, y, rr * 2.6)
+          lit.addColorStop(0, `rgba(255, 200, 110, ${0.75 - 0.25 * (1 - glow)})`)
+          lit.addColorStop(0.42, 'rgba(255, 178, 60, 0.35)')
+          lit.addColorStop(1, 'rgba(255, 160, 40, 0)')
+          g.beginPath()
+          g.arc(x, y, rr * 2.6, 0, Math.PI * 2)
+          g.fillStyle = lit
+          g.fill()
+
+          g.beginPath()
+          g.arc(x, y, rr + 2.5 * dpr, 0, Math.PI * 2)
+          g.lineWidth = 1.8 * dpr
+          g.strokeStyle = 'rgba(255, 214, 140, 0.9)'
+          g.stroke()
+
+          // A caret pointing outward for the octave-up copy of a hole.
+          if (raised) {
+            const tipR = holeR + rr * 2.9
+            g.save()
+            g.translate(Math.cos(a) * tipR, Math.sin(a) * tipR)
+            g.rotate(a + Math.PI / 2)
+            const w = rr * 0.75
+            g.beginPath()
+            g.moveTo(-w, w * 0.6)
+            g.lineTo(0, -w * 0.5)
+            g.lineTo(w, w * 0.6)
+            g.lineWidth = 1.8 * dpr
+            g.lineCap = 'round'
+            g.lineJoin = 'round'
+            g.strokeStyle = 'rgba(255, 214, 140, 0.95)'
+            g.stroke()
+            g.restore()
+          }
+        }
+      }
       g.restore()
 
       // --- pointer ----------------------------------------------------------
@@ -613,6 +687,9 @@ export function PitchDisc({
         const tapped = ((k % NOTE_COUNT) + NOTE_COUNT) % NOTE_COUNT
         velRef.current = 0
         targetRef.current = angleForIndex(tapped, angleRef.current)
+        // In stack mode the tap also changes what that hole is doing. The disc
+        // still spins to it, so you can see which one you hit.
+        if (stackModeRef.current) toggleRef.current?.(tapped)
       }
     },
     [localAngle, onHubUp],
