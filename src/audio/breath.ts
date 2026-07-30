@@ -7,10 +7,15 @@
  *
  * The hard part isn't detecting loudness, it's telling *blowing* apart from
  * everything else the mic hears: forty people singing, a director talking, and
- * the app's own tone coming back out of the speaker. The trick is spectral
- * flatness. Breath is broadband noise (flat spectrum). Voices and our own reed
- * are harmonic (peaky spectrum). Energy alone can't distinguish them; energy
- * plus flatness separates them cleanly.
+ * the app's own tone coming back out of the speaker. Breath is broadband noise;
+ * voices and our own reed are harmonic. So the gate is energy plus a measure of
+ * how noise-like the spectrum is — see `noisiness()` for why that measure is
+ * taken per sub-band rather than across the whole range, which is the
+ * difference between this working on a phone and not.
+ *
+ * A loud direct puff opens the gate regardless, because microphone responses
+ * vary too much between devices to bet the whole feature on the spectrum
+ * looking the way we expect.
  */
 
 import { setAudioSessionType } from './engine'
@@ -30,17 +35,38 @@ export interface BreathFrame {
   /** Raw broadband level, for the meter. */
   energy: number
   /** 0..1. High = noise-like (breath). Low = tonal (voice, or our speaker). */
-  flatness: number
+  noisiness: number
   /** True while the gate is open — i.e. we believe you are blowing. */
   blowing: boolean
   /** Current gate threshold, so the meter can draw the trigger line. */
   threshold: number
 }
 
-/** Gate opens only above this. Voices and speaker bleed sit well below. */
-const FLATNESS_OPEN = 0.16
-/** Once open, we hang on a little looser to avoid chattering mid-breath. */
-const FLATNESS_HOLD = 0.1
+/**
+ * Gate bars for the noisiness measure below. These are set from measurement,
+ * not taste: breath scores 0.44-0.69, a single sung note 0.10-0.15, room tone
+ * high but rejected on level instead. The bar sits in the gap with room to
+ * spare at both ends.
+ *
+ * Known limit: a full chorus scores ~0.60 — that many detuned harmonics
+ * genuinely do fill every band, so no spectral measure can tell them from
+ * broadband noise. Proximity is what saves us in practice, since a puff at the
+ * microphone dwarfs a section singing several metres away. If it ever does
+ * misfire mid-song, press-and-hold still works with breath mode off.
+ */
+const NOISE_OPEN = 0.34
+/** Once open, we hang on looser to avoid chattering mid-breath. */
+const NOISE_HOLD = 0.24
+
+/**
+ * A puff this far above the noise floor opens the gate on a much weaker
+ * noisiness bar. The safety net: microphone responses vary enormously across
+ * phones, and a feature that silently never triggers is worse than one that
+ * occasionally triggers early. It still refuses anything clearly harmonic, and
+ * it only applies while the pipe is silent, so our own speaker can't trip it.
+ */
+const LOUD_PUFF_RATIO = 2.2
+const LOUD_PUFF_NOISE = 0.28
 
 const CALIBRATION_MS = 900
 
@@ -213,7 +239,7 @@ export class BreathDetector {
     }
     const energy = Math.sqrt(sum / this.timeBuf.length)
 
-    const flatness = this.spectralFlatness()
+    const noisiness = this.noisiness()
 
     // --- calibration -----------------------------------------------------
     const now = performance.now()
@@ -222,7 +248,7 @@ export class BreathDetector {
       this.onFrame({
         pressure: 0,
         energy,
-        flatness,
+        noisiness,
         blowing: false,
         threshold: this.threshold(),
       })
@@ -241,13 +267,23 @@ export class BreathDetector {
 
     // --- gate ------------------------------------------------------------
     const threshold = this.threshold()
-    const flatEnough = this.gateOpen
-      ? flatness > FLATNESS_HOLD
-      : flatness > FLATNESS_OPEN
-    const loudEnough = this.gateOpen
-      ? energy > threshold * 0.55
-      : energy > threshold
-    this.gateOpen = flatEnough && loudEnough
+    // Turning sensitivity up relaxes what counts as breath as well as how
+    // loud it must be, otherwise the slider can't rescue a microphone whose
+    // spectrum simply doesn't look the way we expect.
+    const relax = this.sensitivity * 0.1
+
+    if (this.gateOpen) {
+      this.gateOpen =
+        noisiness > NOISE_HOLD - relax && energy > threshold * 0.55
+    } else {
+      const looksLikeBreath = noisiness > NOISE_OPEN - relax
+      // The safety net. Only reachable while the pipe is silent, so our own
+      // output can never trip it, and still barred to anything clearly tonal.
+      const unmistakablePuff =
+        energy > threshold * LOUD_PUFF_RATIO &&
+        noisiness > LOUD_PUFF_NOISE - relax
+      this.gateOpen = energy > threshold && (looksLikeBreath || unmistakablePuff)
+    }
 
     // --- pressure --------------------------------------------------------
     // The ceiling adapts to how hard this particular person actually blows,
@@ -273,7 +309,7 @@ export class BreathDetector {
     this.onFrame({
       pressure: this.smoothed,
       energy,
-      flatness,
+      noisiness,
       blowing: this.gateOpen,
       threshold,
     })
@@ -286,30 +322,63 @@ export class BreathDetector {
   }
 
   /**
-   * Wiener entropy over the speech/breath band: geometric mean over arithmetic
-   * mean of the power spectrum. 1 = white noise, 0 = pure tone.
+   * How noise-like the spectrum is. 1 = broadband hiss, 0 = a pure tone.
+   *
+   * This is Wiener entropy (geometric mean over arithmetic mean of the power
+   * spectrum), but computed per sub-band and then taken as a median rather
+   * than once across the whole range. That difference matters a lot in
+   * practice: plain wideband flatness also punishes spectral *tilt*, and
+   * breath through a phone microphone is extremely tilted — so real breath
+   * scored as "tonal" and the gate never opened. Within a narrow band there
+   * is little tilt left to punish, so each sub-band score reflects only
+   * noisiness, and the median ignores a band or two dominated by a stray tone.
    */
-  private spectralFlatness(): number {
+  private noisiness(): number {
     if (!this.ctx || !this.analyser) return 0
     const nyquist = this.ctx.sampleRate / 2
     const binHz = nyquist / this.freqBuf.length
-    const lo = Math.floor(300 / binHz)
-    const hi = Math.min(this.freqBuf.length - 1, Math.floor(8000 / binHz))
-    if (hi <= lo) return 0
+    const BANDS = 8
+    const LO = 300
+    const HI = 8000
+    const ratio = Math.pow(HI / LO, 1 / BANDS)
 
-    let logSum = 0
-    let linSum = 0
-    let n = 0
-    for (let i = lo; i <= hi; i++) {
-      // getFloatFrequencyData is dB; back to power, with a floor so silent
-      // bins don't drag the geometric mean to zero.
-      const power = Math.pow(10, this.freqBuf[i] / 10) + 1e-12
-      logSum += Math.log(power)
-      linSum += power
-      n++
+    const flat: number[] = []
+    const power: number[] = []
+    let f0 = LO
+    for (let b = 0; b < BANDS; b++) {
+      const f1 = f0 * ratio
+      const i0 = Math.max(1, Math.floor(f0 / binHz))
+      const i1 = Math.min(this.freqBuf.length - 1, Math.floor(f1 / binHz))
+      f0 = f1
+      // Too few bins to say anything meaningful about the shape.
+      if (i1 - i0 < 3) continue
+
+      let logSum = 0
+      let linSum = 0
+      let n = 0
+      for (let i = i0; i <= i1; i++) {
+        // getFloatFrequencyData is dB; back to power, with a floor so silent
+        // bins don't drag the geometric mean to zero.
+        const p = Math.pow(10, this.freqBuf[i] / 10) + 1e-12
+        logSum += Math.log(p)
+        linSum += p
+        n++
+      }
+      flat.push(Math.exp(logSum / n) / (linSum / n))
+      power.push(linSum)
     }
-    const geo = Math.exp(logSum / n)
-    const arith = linSum / n
-    return arith > 0 ? Math.min(1, geo / arith) : 0
+    if (!flat.length) return 0
+
+    // Score only the bands actually carrying energy, and take a low quantile
+    // of those rather than the middle. Breath is noisy in every band it
+    // occupies, so its weakest band still scores high. A tone is peaky
+    // wherever its harmonics land, so *some* energetic band scores low even
+    // though the empty bands above it look like pure noise — which is exactly
+    // how a low sung note used to sneak past a median.
+    const loudest = Math.max(...power)
+    const scored = flat.filter((_, i) => power[i] > loudest * 0.05)
+    const use = scored.length ? scored : flat
+    use.sort((a, b) => a - b)
+    return Math.min(1, use[Math.floor(use.length * 0.25)])
   }
 }

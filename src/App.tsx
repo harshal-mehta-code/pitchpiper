@@ -334,6 +334,7 @@ export default function App() {
         onRecalibrate={() => detectorRef.current?.recalibrate()}
         volume={volume}
         onVolume={setVolume}
+        breathFrameRef={breathFrameRef}
       />
     </div>
   )

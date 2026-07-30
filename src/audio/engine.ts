@@ -388,8 +388,14 @@ export class ReedVoice {
     const p = Math.max(0, Math.min(1, pressure))
     // Perceptual curve — linear mic level feels unresponsive at the bottom.
     const shaped = p * p * (3 - 2 * p)
-    this.amp.gain.setTargetAtTime(this.level * shaped, t, 0.028)
-    this.body.frequency.setTargetAtTime(700 + shaped * 6000, t, 0.05)
+    // A reed does not fade in from silence. Below its threshold pressure it
+    // doesn't speak at all; once it speaks it is already at a real volume.
+    // Modelling that matters practically as well as musically: a gentle
+    // breath used to land at a few percent of full scale, which is audible on
+    // a meter and completely inaudible in a room.
+    const speaking = 0.38 + 0.62 * shaped
+    this.amp.gain.setTargetAtTime(this.level * speaking, t, 0.028)
+    this.body.frequency.setTargetAtTime(1200 + speaking * 5600, t, 0.05)
     this.noiseGain.gain.setTargetAtTime(this.level * (0.03 + p * 0.09), t, 0.04)
     // Blow harder, go slightly sharp. Every wind player knows this feeling.
     const bend = shaped * 6 - 3

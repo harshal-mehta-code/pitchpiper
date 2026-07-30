@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import type { BreathFrame } from '../audio/breath'
 
 export interface SettingsSheetProps {
   open: boolean
@@ -15,6 +16,7 @@ export interface SettingsSheetProps {
   onRecalibrate: () => void
   volume: number
   onVolume: (v: number) => void
+  breathFrameRef: React.RefObject<BreathFrame | null>
 }
 
 export function SettingsSheet(props: SettingsSheetProps) {
@@ -114,6 +116,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
             Do this when you move somewhere noisier. Stay quiet for a second
             while it measures.
           </p>
+          {props.breathMode && <MicDiagnostics frameRef={props.breathFrameRef} />}
         </Row>
 
         <Row label="Keep screen awake" value={props.keepAwake ? 'On' : 'Off'}>
@@ -143,6 +146,52 @@ export function SettingsSheet(props: SettingsSheetProps) {
           Done
         </button>
       </div>
+    </div>
+  )
+}
+
+/**
+ * What the microphone is actually reporting.
+ *
+ * Breath detection depends on hardware that varies wildly between phones, and
+ * "it doesn't trigger" is impossible to diagnose from a description. This shows
+ * both gate conditions separately, so a failure points straight at its cause:
+ * level below the trigger line, or a spectrum that doesn't look like breath.
+ */
+function MicDiagnostics({
+  frameRef,
+}: {
+  frameRef: React.RefObject<BreathFrame | null>
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let raf = 0
+    const tick = () => {
+      raf = requestAnimationFrame(tick)
+      const f = frameRef.current
+      const el = ref.current
+      if (!f || !el) return
+      const ratio = f.threshold > 0 ? f.energy / f.threshold : 0
+      el.textContent =
+        `level ${ratio.toFixed(2)}× trigger · ` +
+        `breath-like ${f.noisiness.toFixed(2)} · ` +
+        (f.blowing ? 'BLOWING' : 'closed')
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [frameRef])
+
+  return (
+    <div className="diagnostics">
+      <div className="diagnostics-label">Microphone right now</div>
+      <div className="diagnostics-values" ref={ref}>
+        waiting…
+      </div>
+      <p className="hint">
+        Blow at the phone and watch this. Level needs to pass 1.00×; if it does
+        and nothing sounds, send me both numbers.
+      </p>
     </div>
   )
 }
