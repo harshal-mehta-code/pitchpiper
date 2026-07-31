@@ -4,6 +4,8 @@ import { ControlTray } from './ui/ControlTray'
 import { BreathMeter } from './ui/BreathMeter'
 import { SettingsSheet } from './ui/SettingsSheet'
 import { TuneView, type TuneMode } from './ui/TuneView'
+import { SetlistSheet } from './ui/SetlistSheet'
+import { setlistFromLocation, type SetlistEntry } from './music/setlist'
 import { usePersistentState } from './hooks/usePersistentState'
 import { useWakeLock } from './hooks/useWakeLock'
 import {
@@ -109,6 +111,7 @@ export default function App() {
   const [smoothing, setSmoothing] = usePersistentState('breathSmoothing', 0.45)
   const [keepAwake, setKeepAwake] = usePersistentState('awake', true)
   const [tuneMode, setTuneMode] = usePersistentState<TuneMode>('tuneMode', 'voice')
+  const [setlist, setSetlist] = usePersistentState<SetlistEntry[]>('setlist', [])
   const [breathResponse, setBreathResponse] = usePersistentState<BreathResponse>(
     'breathResponse',
     prefersPuffMode() ? 'puff' : 'live',
@@ -125,6 +128,9 @@ export default function App() {
   const [breathDetail, setBreathDetail] = useState<string | undefined>()
   const [hubActive, setHubActive] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [setlistOpen, setSetlistOpen] = useState(false)
+  /** A setlist that came in on the URL and hasn't been accepted yet. */
+  const [incoming, setIncoming] = useState<SetlistEntry[] | null>(null)
   /** True while a puff-triggered note is ringing with the microphone released. */
   const [puffSounding, setPuffSounding] = useState(false)
   const [micInputs, setMicInputs] = useState<MediaDeviceInfo[]>([])
@@ -247,6 +253,43 @@ export default function App() {
       })
     },
     [setStack],
+  )
+
+  // --- the setlist ---------------------------------------------------------
+
+  /**
+   * A shared list opens the sheet rather than being applied.
+   *
+   * A link from a director shouldn't be able to quietly overwrite the book
+   * somebody else has built, so what arrives is shown and offered — never
+   * merged on their behalf. The hash is cleared either way, so a reload doesn't
+   * ask a second time.
+   */
+  useEffect(() => {
+    const arrived = setlistFromLocation()
+    if (!arrived) return
+    setIncoming(arrived)
+    setSetlistOpen(true)
+    history.replaceState(null, '', location.pathname + location.search)
+  }, [])
+
+  const acceptIncoming = useCallback(
+    (mode: 'add' | 'replace') => {
+      if (!incoming) return
+      setSetlist((prev) => (mode === 'replace' ? incoming : [...prev, ...incoming]))
+      setIncoming(null)
+    },
+    [incoming, setSetlist],
+  )
+
+  const loadEntry = useCallback(
+    (e: SetlistEntry) => {
+      setNoteIndex(e.noteIndex)
+      setChordId(e.chordId)
+      setOctaveShift(e.octaveShift)
+      if (e.chordId === STACK_ID) setStack(e.stack)
+    },
+    [setChordId, setNoteIndex, setOctaveShift, setStack],
   )
 
   // --- breath --------------------------------------------------------------
@@ -546,6 +589,14 @@ export default function App() {
         <div className="topbar-right">
           <div className="tuning-badge">A={a4}</div>
           <button
+            className={`icon-btn${setlistOpen ? ' is-on' : ''}`}
+            onClick={() => setSetlistOpen(true)}
+            aria-label="Setlist"
+            title="Setlist — your songs and their starting pitches"
+          >
+            <ListIcon />
+          </button>
+          <button
             className={`icon-btn${tuning ? ' is-on' : ''}`}
             onClick={toggleTuner}
             aria-pressed={tuning}
@@ -631,6 +682,19 @@ export default function App() {
         label={tuning ? (tuneMode === 'chord' ? 'Listening for' : 'Reference') : 'Chord'}
       />
 
+      <SetlistSheet
+        open={setlistOpen}
+        onClose={() => setSetlistOpen(false)}
+        list={setlist}
+        onList={setSetlist}
+        useFlats={useFlats}
+        current={{ noteIndex, chordId, octaveShift, stack }}
+        onLoad={loadEntry}
+        incoming={incoming}
+        onAcceptIncoming={acceptIncoming}
+        onDismissIncoming={() => setIncoming(null)}
+      />
+
       <SettingsSheet
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
@@ -668,6 +732,15 @@ function ForkIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M8.5 3v7.5a3.5 3.5 0 0 0 7 0V3" />
       <path d="M12 14v7" />
+    </svg>
+  )
+}
+
+function ListIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 6.5h11M9 12h11M9 17.5h11" />
+      <path d="M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" />
     </svg>
   )
 }

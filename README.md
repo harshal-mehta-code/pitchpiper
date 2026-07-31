@@ -46,6 +46,14 @@ knows what the chord is *meant* to be, this doesn't have to solve blind
 four-part transcription — it only has to look in the right places, which is both
 tractable and the actual question a director has.
 
+**Setlists, shared as a link.** The problem is unglamorous and completely real:
+the director knows the starting pitch for every song in the book, and nobody
+else does. Save each pitch with a song name against it, and the list is there on
+stage. Then send it — the entire setlist travels inside the URL, so the whole
+chorus opens the same list with no account, no sign-in and nothing uploaded
+anywhere. A list that arrives by link is shown and offered, never merged on your
+behalf.
+
 **Stack.** The `⁘` chord button turns the disc into a note picker: tap holes to
 stack them, tap again to lift one an octave, tap once more to drop it. Any set
 of notes you like, sounded together — a diminished chord, two notes to check an
@@ -154,10 +162,11 @@ src/
     analyzer.ts   pitch detection (autocorrelation) and per-part chord tuning
   music/
     notes.ts      the thirteen holes, tuning maths, barbershop voicings
+    setlist.ts    saved pitches, and packing a list into a URL
   ui/
     PitchDisc.tsx the brass disc (canvas)
     TuneView.tsx  the tuner — one voice, and the whole chord
-    ControlTray.tsx, BreathMeter.tsx, SettingsSheet.tsx
+    SetlistSheet.tsx, ControlTray.tsx, BreathMeter.tsx, SettingsSheet.tsx
   hooks/          wake lock, persisted preferences
 ```
 
@@ -173,13 +182,11 @@ Everything runs client-side. No backend, no accounts, no analytics.
 | Hold the middle | sound it |
 | Space | sound it (desktop) |
 | ← / → | previous / next note |
+| List icon, top right | the setlist |
 | Tuning fork, top right | the tuner |
 
 ## Not built yet
 
-- **Setlist links** — a setlist encoded in the URL so a director shares one link
-  and the whole chorus has the same starting pitches.
-- **Tag library** — the four starting notes for a stack of barbershop tags.
 - **Cold Call** — a daily pitch you have to sing from memory with no reference,
   scored in cents, with a Wordle-style shareable result grid.
 - **Pitch Lock** — hold a pitch against the clock to score.
