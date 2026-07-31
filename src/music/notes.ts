@@ -255,3 +255,18 @@ export function buildStack(
 
 /** Highest offset a stack entry can take: the top hole, an octave up. */
 export const MAX_STACK_OFFSET = SEMITONES_IN_PIPE - 1 + 12
+
+/**
+ * Which of the thirteen holes a stack entry belongs to.
+ *
+ * The two ranges overlap at 12 — the top hole as engraved, and the bottom hole
+ * an octave up, which are the same pitch. Treating 12 as the top hole is right
+ * either way, and there is nothing to be gained by distinguishing them.
+ */
+export function stackHole(offset: number): number {
+  return offset >= SEMITONES_IN_PIPE ? offset - 12 : offset
+}
+
+export function stackRaised(offset: number): boolean {
+  return offset >= SEMITONES_IN_PIPE
+}

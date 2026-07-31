@@ -350,27 +350,30 @@ body {
   font-size: 15px;
 }
 
+/* The affordance for the chip's one job. Choosing a note and choosing which
+   octave it sits in are two decisions, so they are two controls: the hole puts
+   a note in or takes it out, the chip moves it. */
 .part-oct {
-  font-size: 10px;
-  color: var(--amber);
+  font-size: 11px;
   line-height: 1;
+  color: var(--brass-dim);
 }
 
-.part-x {
-  font-size: 13px;
-  line-height: 1;
-  color: var(--ink-dim);
-  opacity: 0.55;
+.part-chip.is-raised {
+  border-color: var(--line-lit);
+  background: var(--wash-lit);
+}
+
+.part-chip.is-raised .part-oct {
+  color: var(--amber);
 }
 
 @media (hover: hover) {
   .part-chip:hover {
     border-color: var(--line-lit);
-    background: var(--wash-lit);
   }
-  .part-chip:hover .part-x {
-    color: var(--bad);
-    opacity: 1;
+  .part-chip:hover .part-oct {
+    color: var(--amber);
   }
 }
 
@@ -1083,16 +1086,66 @@ body {
 
 .sheet {
   width: min(520px, 100%);
-  max-height: 88vh;
-  max-height: 88dvh;
-  overflow-y: auto;
-  padding: 10px 22px calc(26px + env(safe-area-inset-bottom));
+  max-height: 86vh;
+  max-height: 86dvh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-radius: 22px 22px 0 0;
   border: 1px solid var(--line);
   border-bottom: 0;
   background: linear-gradient(180deg, #16261f, #0b1512);
   box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.6);
   animation: rise 0.24s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+/* The way out, always on screen. `touch-action: none` is what makes a drag
+   here unambiguous: the body below scrolls, and a gesture that has to be
+   guessed at between scrolling and dismissing gets guessed wrong. */
+.sheet-head {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 8px 22px 10px;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.sheet-head:active {
+  cursor: grabbing;
+}
+
+.sheet-x {
+  position: absolute;
+  top: 6px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--wash);
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+
+.sheet-x svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 22px calc(26px + env(safe-area-inset-bottom));
 }
 
 @keyframes fade {
@@ -1109,11 +1162,11 @@ body {
 }
 
 .sheet-grip {
-  width: 38px;
+  width: 44px;
   height: 4px;
   border-radius: var(--r-pill);
-  background: rgba(236, 223, 194, 0.22);
-  margin: 2px auto 10px;
+  background: rgba(236, 223, 194, 0.28);
+  margin: 2px auto 9px;
 }
 
 /* A sheet that slides up over the instrument should say what it is. Without
@@ -1127,7 +1180,7 @@ body {
   color: var(--brass);
   text-align: center;
   opacity: 0.8;
-  margin-bottom: 4px;
+  margin: 0;
 }
 
 .sheet-section {
@@ -1140,7 +1193,7 @@ body {
 }
 
 .sheet-section:first-of-type {
-  margin-top: 0;
+  margin-top: 2px;
 }
 
 .sheet-row {

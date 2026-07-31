@@ -31,8 +31,9 @@ import {
   chordById,
   midiToName,
   noteLabel,
+  MAX_STACK_OFFSET,
   PIPE_NOTES,
-  SEMITONES_IN_PIPE,
+  stackRaised,
   STACK_ID,
   VOICE_PARTS,
   type ChordTone,
@@ -199,7 +200,7 @@ export default function App() {
   /** 0..1 breath pressure for the air over the pipe. Read at 60fps. */
   const airRef = useRef(0)
   const spaceAtRef = useRef(0)
-  const puffTimersRef = useRef<{ end?: number; rearm?: number }>({})
+  const puffTimersRef = useRef<{ end?: number; rearm?: number; gust?: number }>({})
   /** Whether breath mode was on when the tuner took the microphone away. */
   const breathWasOnRef = useRef(false)
 
@@ -237,6 +238,7 @@ export default function App() {
     const t = puffTimersRef.current
     if (t.end) window.clearTimeout(t.end)
     if (t.rearm) window.clearTimeout(t.rearm)
+    if (t.gust) window.clearTimeout(t.gust)
     puffTimersRef.current = {}
   }, [])
 
@@ -334,34 +336,37 @@ export default function App() {
   // --- the stack -----------------------------------------------------------
 
   /**
-   * A hole cycles off → in → an octave up → off.
+   * A hole is either in or out. That is all a hole does.
    *
-   * Three states on one tap keeps voicing control on the instrument itself. The
-   * alternative — a separate list of notes with octave steppers beside each —
-   * is how every other app does it, and it is a worse thing to use in a hurry.
+   * It used to cycle off → in → an octave up → off, which put voicing control
+   * on the instrument at the cost of the one thing people do constantly: taking
+   * a note back out. Deselecting meant two more taps, and the octave state you
+   * had to pass through on the way was a state nobody asked for. Selection is a
+   * toggle; the octave is a property of a note you have already chosen, and it
+   * now lives on that note, in the list underneath.
    */
   const toggleStack = useCallback(
     (index: number) => {
       setStack((prev) => {
-        const hasBase = prev.includes(index)
-        const hasUp = prev.includes(index + 12)
-        if (hasBase) return [...prev.filter((v) => v !== index), index + 12].sort(byValue)
-        if (hasUp) return prev.filter((v) => v !== index + 12)
+        const raised = index + 12
+        if (prev.includes(index) || prev.includes(raised)) {
+          return prev.filter((v) => v !== index && v !== raised)
+        }
         return [...prev, index].sort(byValue)
       })
     },
     [setStack],
   )
 
-  /**
-   * Take one note back out, from the list under the disc.
-   *
-   * The cycle on the disc is quick once you know it, but undoing a mistake
-   * through it means tapping the same hole twice more and hearing both states on
-   * the way past. A note you can see is a note you should be able to strike out.
-   */
-  const dropStackNote = useCallback(
-    (offset: number) => setStack((prev) => prev.filter((v) => v !== offset)),
+  /** Shift one note of the stack up or down an octave, from its own chip. */
+  const shiftStackOctave = useCallback(
+    (offset: number) => {
+      setStack((prev) => {
+        const next = stackRaised(offset) ? offset - 12 : offset + 12
+        if (next > MAX_STACK_OFFSET || next < 0) return prev
+        return [...prev.filter((v) => v !== offset), next].sort(byValue)
+      })
+    },
     [setStack],
   )
 
@@ -417,9 +422,18 @@ export default function App() {
     detectorRef.current?.pause()
     setPuffSounding(true)
     startSound('puff', strength)
-    // The microphone is deaf from here, so no further frames will arrive to
-    // wind the air back down. Cut it and let the disc's own decay draw the wake.
-    airRef.current = 0
+    // A gust, not a cut.
+    //
+    // The microphone is released the instant a puff fires, so no further frames
+    // arrive — and the frame that triggered it caught the breath on its way up,
+    // when the pressure is still near nothing. Reading that literally left the
+    // air invisible on exactly the platform where puff mode is the default.
+    // What actually happened is a hard breath, so that is what gets drawn, and
+    // the disc's own slow fall turns it into a wake.
+    airRef.current = 0.7 + 0.3 * strength
+    puffTimersRef.current.gust = window.setTimeout(() => {
+      airRef.current = 0
+    }, 240)
 
     const sustain =
       PUFF_SUSTAIN_MIN_MS + (PUFF_SUSTAIN_MAX_MS - PUFF_SUSTAIN_MIN_MS) * strength
@@ -783,7 +797,7 @@ export default function App() {
   const hint = drone
     ? 'Left running — tap the middle again to stop'
     : isStack
-      ? 'Tap a hole: add → up an octave → off'
+      ? 'Tap holes to add · tap a note below for its octave'
       : breathMode
         ? breathResponse === 'puff'
           ? 'One puff at the bottom of your phone — or use the middle'
@@ -885,20 +899,17 @@ export default function App() {
               {tones.map((t, i) =>
                 isStack ? (
                   <button
-                    className="part part-chip"
+                    className={`part part-chip${
+                      stackRaised(stackOffsets[i]) ? ' is-raised' : ''
+                    }`}
                     key={`${t.part}-${t.midi}`}
-                    onClick={() => dropStackNote(stackOffsets[i])}
-                    aria-label={`Remove ${t.part}`}
-                    title={`Remove ${t.part}`}
+                    onClick={() => shiftStackOctave(stackOffsets[i])}
+                    aria-label={`${t.part} — shift an octave`}
+                    title="Shift this note an octave"
                   >
                     <span className="part-note">{t.part}</span>
-                    {stackOffsets[i] >= SEMITONES_IN_PIPE && (
-                      <span className="part-oct" aria-hidden="true">
-                        ↑
-                      </span>
-                    )}
-                    <span className="part-x" aria-hidden="true">
-                      ×
+                    <span className="part-oct" aria-hidden="true">
+                      ⇅
                     </span>
                   </button>
                 ) : (

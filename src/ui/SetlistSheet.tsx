@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { chordById, midiToName, noteLabel, PIPE_NOTES, STACK_ID } from '../music/notes'
 import { newEntryId, setlistLink, type SetlistEntry } from '../music/setlist'
+import { Sheet } from './Sheet'
 
 /**
  * The setlist.
@@ -74,8 +75,6 @@ export function SetlistSheet(props: SetlistSheetProps) {
     setShared(url)
   }, [props.list])
 
-  if (!open) return null
-
   const move = (i: number, by: number) => {
     const next = props.list.slice()
     const j = i + by
@@ -85,17 +84,8 @@ export function SetlistSheet(props: SetlistSheetProps) {
   }
 
   return (
-    <div className="sheet-scrim" onPointerDown={onClose}>
-      <div
-        className="sheet"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Setlist"
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <div className="sheet-grip" />
-        <div className="sheet-title">Setlist</div>
-
+    <Sheet open={open} title="Setlist" onClose={onClose}>
+      <>
         {props.incoming && (
           <div className="incoming">
             <div className="incoming-title">
@@ -204,8 +194,8 @@ export function SetlistSheet(props: SetlistSheetProps) {
         <button className="sheet-close" onClick={onClose}>
           Done
         </button>
-      </div>
-    </div>
+      </>
+    </Sheet>
   )
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { BreathFrame } from '../audio/breath'
 import type { BreathResponse } from '../App'
+import { Sheet } from './Sheet'
 
 export interface SettingsSheetProps {
   open: boolean
@@ -30,33 +31,9 @@ export interface SettingsSheetProps {
 }
 
 export function SettingsSheet(props: SettingsSheetProps) {
-  const { open, onClose } = props
-  const sheetRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
-
-  if (!open) return null
-
   return (
-    <div className="sheet-scrim" onPointerDown={onClose}>
-      <div
-        className="sheet"
-        ref={sheetRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Settings"
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <div className="sheet-grip" />
-        <div className="sheet-title">Settings</div>
-
+    <Sheet open={props.open} title="Settings" onClose={props.onClose}>
+      <>
         <Section>Sound</Section>
 
         <Row label="Concert pitch" value={`A = ${props.a4} Hz`}>
@@ -270,11 +247,11 @@ export function SettingsSheet(props: SettingsSheetProps) {
           with no signal at all.
         </div>
 
-        <button className="sheet-close" onClick={onClose}>
+        <button className="sheet-close" onClick={props.onClose}>
           Done
         </button>
-      </div>
-    </div>
+      </>
+    </Sheet>
   )
 }
 

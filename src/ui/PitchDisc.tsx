@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import { playDetentClick } from '../audio/engine'
+import { stackHole } from '../music/notes'
 
 /**
  * The whole app is one brass disc you spin with your thumb.
@@ -70,10 +71,11 @@ export interface PitchDiscProps {
   breathOn?: boolean
   /**
    * Stack mode. Semitone offsets from the bottom hole, so 0..12 is a hole as
-   * engraved and 13..24 is the same hole an octave up. Tapping a hole cycles it
-   * through off → in → an octave up → off, which is the whole of the interface
-   * for building a custom voicing: no extra panel, no note list, just the
-   * instrument with more of it lit.
+   * engraved and 13..24 is the same hole an octave up. A tap puts a hole in or
+   * takes it out — nothing else. Choosing a note and choosing its octave are
+   * two different decisions, and making one tap do both meant that taking a
+   * note back out, which is what people do constantly, cost three taps and made
+   * you listen to a state you never wanted on the way past.
    *
    * Crucially the disc does *not* turn to a hole you tap here. Every hole is on
    * screen at once, so the rotation buys nothing, and watching the thing swing
@@ -276,6 +278,8 @@ interface Mote {
   life: number
   decay: number
   weight: number
+  /** Came out of a hole rather than in from the bottom of the screen. */
+  jet: boolean
 }
 
 /**
@@ -290,10 +294,18 @@ interface Mote {
  * actually reads as wind: how many streaks there are, how fast they go, and how
  * brightly they show up.
  */
-function blow(motes: Mote[], air: number, half: number, R: number, g: CanvasRenderingContext2D) {
+function blow(
+  motes: Mote[],
+  air: number,
+  half: number,
+  R: number,
+  angle: number,
+  holes: number[],
+  g: CanvasRenderingContext2D,
+) {
   const speed = (0.55 + 2.7 * air) * R * 0.012
 
-  let spawn = 0.15 + 2 * air
+  let spawn = 0.15 + 2.2 * air
   while (spawn > 0 && motes.length < MAX_MOTES) {
     if (spawn < 1 && Math.random() > spawn) break
     spawn -= 1
@@ -305,7 +317,32 @@ function blow(motes: Mote[], air: number, half: number, R: number, g: CanvasRend
       life: 1,
       decay: 0.004 + Math.random() * 0.004,
       weight: 0.5 + Math.random() * 0.9,
+      jet: false,
     })
+  }
+
+  // And some of it goes *through* the pipe. Once you are blowing properly, the
+  // holes that are actually sounding spit out short bright wisps that the main
+  // stream then carries away — which is the difference between wind over an
+  // object and an instrument being played.
+  if (air > 0.28 && holes.length) {
+    let jets = (air - 0.28) * 1.9
+    while (jets > 0 && motes.length < MAX_MOTES + 24) {
+      if (jets < 1 && Math.random() > jets) break
+      jets -= 1
+      const a = holes[(Math.random() * holes.length) | 0] * STEP - Math.PI / 2 + angle
+      const r = R * 0.545
+      motes.push({
+        x: Math.cos(a) * r,
+        y: Math.sin(a) * r,
+        vx: Math.cos(a) * speed * 0.5 + (Math.random() - 0.5) * speed * 0.2,
+        vy: Math.sin(a) * speed * 0.5 - speed * 0.45,
+        life: 1,
+        decay: 0.028 + Math.random() * 0.02,
+        weight: 0.35 + Math.random() * 0.4,
+        jet: true,
+      })
+    }
   }
 
   g.save()
@@ -338,14 +375,14 @@ function blow(motes: Mote[], air: number, half: number, R: number, g: CanvasRend
     // Fade in and out at the edges of the canvas, so nothing pops into being at
     // a boundary the eye would otherwise never notice.
     const edge = Math.min(1, ((half * 1.25 - Math.abs(m.y)) / (half * 0.45)) ** 2)
-    const alpha = (0.07 + 0.42 * air) * Math.min(1, m.life * 3) * edge
+    const alpha = (0.09 + 0.58 * air) * Math.min(1, m.life * 3) * edge * (m.jet ? 1.5 : 1)
     if (alpha <= 0.004) continue
 
     g.beginPath()
-    g.moveTo(m.x - m.vx * 4.5, m.y - m.vy * 4.5)
+    g.moveTo(m.x - m.vx * (m.jet ? 3 : 5), m.y - m.vy * (m.jet ? 3 : 5))
     g.lineTo(m.x, m.y)
-    g.lineWidth = m.weight * (0.7 + 1.1 * air) * (R * 0.0055)
-    g.strokeStyle = `rgba(255, 233, 190, ${alpha})`
+    g.lineWidth = m.weight * (0.7 + 1.2 * air) * (R * 0.0058)
+    g.strokeStyle = `rgba(255, 236, 198, ${Math.min(0.85, alpha)})`
     g.stroke()
   }
 
@@ -691,7 +728,21 @@ export function PitchDisc({
         // Rises with the breath and falls well behind it, so a puff leaves a
         // wake instead of snapping off the moment the gate shuts.
         airShownRef.current = a + (want - a) * (want > a ? 0.35 : 0.045)
-        blow(motesRef.current, airShownRef.current, px / 2, R, g)
+        // The holes that are actually sounding: the whole stack, or the one
+        // note under the pointer. Rotated with the disc, since they are welded
+        // to it and the air is not.
+        const lit = stackModeRef.current
+          ? [...new Set(stackRef.current.map(stackHole))]
+          : [lastIndexRef.current]
+        blow(
+          motesRef.current,
+          airShownRef.current,
+          px / 2,
+          R,
+          angleRef.current,
+          lit,
+          g,
+        )
       } else if (motesRef.current.length) {
         motesRef.current.length = 0
         airShownRef.current = 0
@@ -928,7 +979,7 @@ export function PitchDisc({
         tabIndex={0}
         aria-label={
           stackMode
-            ? 'Pitch pipe in stack mode. Tap a hole to add it, again to raise it an octave, again to remove it.'
+            ? 'Pitch pipe in stack mode. Tap a hole to add or remove that note.'
             : 'Pitch pipe. Left and right arrows change note, space sounds it.'
         }
         aria-valuemin={0}
