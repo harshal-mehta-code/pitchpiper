@@ -32,8 +32,12 @@ const HOLE = 1.18
 const GAP = 18
 /** How close the card may come to the edge of the screen. */
 const EDGE = 12
-/** How long the tick is left on screen before the step gives way. */
-const TICK_MS = 640
+/**
+ * How long the tick is left on screen before the step gives way.
+ *
+ * Long enough to be read as a reward rather than as the card being yanked away.
+ */
+const TICK_MS = 900
 
 export interface TourSignals {
   view: 'pipe' | 'tune'
@@ -41,7 +45,17 @@ export interface TourSignals {
   /** Anything at all coming out of the speaker because of the middle. */
   sounding: boolean
   pitchMode: 'note' | 'chord' | 'custom'
-  breathMode: boolean
+  /**
+   * The microphone is open, past the room measurement, and actually hearing.
+   *
+   * Not "the Breath switch is on", which is true the instant it is tapped and
+   * therefore also true while the phone's own permission sheet is sitting over
+   * the whole screen. Ticking a step off behind a system prompt and moving on
+   * underneath it is the tour talking to itself: by the time the prompt is
+   * answered the card that asked for this is two steps gone. So the step waits
+   * for the thing it actually promised — a microphone that is listening.
+   */
+  breathReady: boolean
   setlistOpen: boolean
 }
 
@@ -109,7 +123,7 @@ const STEPS: Step[] = [
     body: 'Turn on Breath and blow at your phone. It speaks when you do and as hard as you do — and you’ll see the air stream across the pipe.',
     todo: 'Turn on Breath',
     spot: { sel: '[data-tour="breath"]' },
-    done: (n) => n.breathMode,
+    done: (n) => n.breathReady,
     when: hasMic,
   },
   {
@@ -146,25 +160,59 @@ export interface TourProps {
 export function Tour({ open, hidden, signals, onClose }: TourProps) {
   const [steps, setSteps] = useState<Step[]>(STEPS)
   const [i, setI] = useState(0)
-  /** True once the step's ask has been carried out, for the half-second before
-   *  the tour moves on. */
-  const [ticked, setTicked] = useState(false)
-  /** False when the step arrived already satisfied, so it asks for nothing. */
-  const [asking, setAsking] = useState(false)
+  /** Which step's ask has just been carried out, for the beat before the tour
+   *  moves on. Held as an index rather than a flag so that stepping away from a
+   *  step clears its tick by construction. */
+  const [tickedStep, setTickedStep] = useState(-1)
 
   const veilRef = useRef<HTMLDivElement>(null)
   const ringRef = useRef<HTMLDivElement>(null)
   const cardRef = useRef<HTMLDivElement>(null)
-  const startRef = useRef(signals)
-  const liveRef = useRef(signals)
-  liveRef.current = signals
   /** The pause between the tick and the next step. Held here rather than in an
    *  effect cleanup: the effect that starts it re-runs on the very next render,
    *  and a cleanup would cancel the timer it had just set. */
   const advanceRef = useRef(0)
+  /** Steps carried out at some point during this run of the tour. */
+  const carriedRef = useRef(new Set<string>())
 
   const step = steps[Math.min(i, steps.length - 1)]
   const last = i >= steps.length - 1
+
+  /**
+   * What the step wants, worked out on arrival.
+   *
+   * Derived during render rather than parked in state, and the difference is a
+   * bug rather than a preference. An effect that stores this runs *after* the
+   * render in which the step changed, so for one render the guard below is
+   * still answering for the step you just left — and pressing Back landed on a
+   * card whose thing you had plainly already done, watched it decide the ask
+   * had just been satisfied, and bounced you forward again. Computing it beside
+   * the step index means the two can never disagree.
+   */
+  const snapRef = useRef<{ i: number; start: TourSignals; asking: boolean }>({
+    i: -1,
+    start: signals,
+    asking: false,
+  })
+  if (open && snapRef.current.i !== i) {
+    window.clearTimeout(advanceRef.current)
+    snapRef.current = {
+      i,
+      // Each step takes its own snapshot, so "changed" always means changed
+      // since you were asked — not since the tour began.
+      start: signals,
+      asking: Boolean(
+        step?.todo &&
+          step.done &&
+          // Going back never re-demands something already done, and neither
+          // does arriving at a step whose lesson was true before you got here.
+          !carriedRef.current.has(step.id) &&
+          !step.done(signals, signals),
+      ),
+    }
+  }
+  const asking = open && snapRef.current.asking
+  const ticked = tickedStep === i
 
   // Availability is settled once, on the way in. A microphone that appears
   // halfway through would otherwise renumber the steps under the user's thumb.
@@ -172,19 +220,12 @@ export function Tour({ open, hidden, signals, onClose }: TourProps) {
     if (!open) return
     setSteps(STEPS.filter((s) => !s.when || s.when()))
     setI(0)
+    setTickedStep(-1)
+    carriedRef.current = new Set()
+    // The -1 is the part that matters — it forces the next render to take a
+    // fresh snapshot for step zero.
+    snapRef.current = { i: -1, start: signals, asking: false }
   }, [open])
-
-  // Each step takes its own snapshot, so "changed" always means changed since
-  // you were asked — not since the tour began.
-  useEffect(() => {
-    if (!open) return
-    window.clearTimeout(advanceRef.current)
-    startRef.current = liveRef.current
-    setTicked(false)
-    setAsking(
-      Boolean(step?.todo && step.done && !step.done(liveRef.current, liveRef.current)),
-    )
-  }, [open, i, step])
 
   useEffect(() => () => window.clearTimeout(advanceRef.current), [])
 
@@ -202,8 +243,9 @@ export function Tour({ open, hidden, signals, onClose }: TourProps) {
   // any of them might be the one where the user did the thing.
   useEffect(() => {
     if (!open || hidden || ticked || !asking || !step?.done) return
-    if (!step.done(signals, startRef.current)) return
-    setTicked(true)
+    if (!step.done(signals, snapRef.current.start)) return
+    carriedRef.current.add(step.id)
+    setTickedStep(i)
     advanceRef.current = window.setTimeout(next, TICK_MS)
   })
 

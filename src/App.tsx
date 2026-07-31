@@ -1108,7 +1108,9 @@ export default function App() {
           noteIndex,
           sounding: hubActive || drone || puffSounding,
           pitchMode,
-          breathMode,
+          // The detector's own word for it, not the switch. Between the two
+          // sits the phone's permission sheet and the room measurement.
+          breathReady: breathMode && breathStatus === 'listening',
           setlistOpen,
         }}
         onClose={() => setTourOpen(false)}

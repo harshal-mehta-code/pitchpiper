@@ -183,7 +183,16 @@ whole app working underneath, so each step names one thing to try and ticks
 itself off the moment you do it. Next is always there whether or not you did the
 thing, Back goes back, and Escape leaves — a tour you cannot walk out of is an
 interrogation. Steps whose lesson you already know quietly drop their prompt
-rather than asking you to do something you have done.
+rather than asking you to do something you have done, and so do steps you have
+already carried out and then stepped back to.
+
+A step ticks on the thing it promised rather than on the tap that asked for it.
+The breath step is the one that matters: the Breath switch is on the instant it
+is pressed, but the phone answers with a permission sheet over the whole screen,
+so ticking there would mean the card that asked is two steps gone by the time
+the prompt is answered. It waits for a microphone that is open, past the room
+measurement, and actually listening. A prompt that never gets a yes leaves the
+step exactly where it was.
 
 Getting to it is the other half. There is no first-run modal, because a modal
 arrives before anyone has a question, blocks the thing they opened the app to
