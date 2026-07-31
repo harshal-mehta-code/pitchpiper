@@ -285,7 +285,11 @@ function MicDiagnostics({
       el.textContent =
         `level ${ratio.toFixed(2)}× trigger · ` +
         `breath-like ${f.noisiness.toFixed(2)} · ` +
-        `${state} ${f.pressure.toFixed(2)}`
+        `${state} ${f.pressure.toFixed(2)} · ` +
+        // What the smoke is drawn from, which is a different and much more
+        // forgiving measure than the reed's drive — worth showing separately
+        // when the question is "can it hear me at all".
+        `air ${f.breathiness.toFixed(2)}`
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)

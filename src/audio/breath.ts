@@ -53,6 +53,21 @@ export interface BreathFrame {
   sustaining: boolean
   /** Current gate threshold, so the meter can draw the trigger line. */
   threshold: number
+  /**
+   * 0..1 — how much breath is arriving, for anything that wants to *show* it.
+   *
+   * Deliberately not `pressure`. Pressure is the reed's drive: zero until the
+   * gate opens, and once open it is measured against a ceiling that climbs to
+   * match the hardest you have ever blown, so an ordinary breath after one big
+   * one reads as almost nothing. Both of those are right for making a sound and
+   * wrong for drawing one — a picture that only appears at full blast tells you
+   * nothing on the way there, which is exactly the moment you want to know the
+   * microphone can hear you.
+   *
+   * This is continuous, starts well below the trigger, and is anchored to the
+   * measured room rather than to a personal best.
+   */
+  breathiness: number
 }
 
 /**
@@ -91,6 +106,21 @@ const LOUD_PUFF_NOISE = 0.28
  * that has nothing to do with the room — which is what made blowing so hard.
  * Sensitivity belongs entirely to the multiple-of-the-room in threshold().
  */
+/**
+ * How far above the measured room a breath has to be before it is worth
+ * drawing. A quarter — clear of the floor tracker's own jitter, and a long way
+ * below the several times over that it takes to sound the pipe.
+ */
+const VISIBLE_FROM = 1.25
+
+/**
+ * Where the scale tops out, as a multiple of the trigger. Ten is about as hard
+ * as anyone blows at a phone, and leaving the top of the range reachable
+ * matters as much as the bottom: a gauge pinned at full tells you no more than
+ * one stuck at zero.
+ */
+const FULL_AT_TRIGGERS = 10
+
 const NOISE_FLOOR_MIN = 0.00005
 const ABSOLUTE_MIN = 0.00012
 
@@ -386,6 +416,7 @@ export class BreathDetector {
         blowing: false,
         sustaining: false,
         threshold: this.threshold(),
+        breathiness: 0,
       })
       return
     }
@@ -427,6 +458,7 @@ export class BreathDetector {
         blowing: false,
         sustaining: false,
         threshold,
+        breathiness: 0,
       })
       return
     }
@@ -452,6 +484,7 @@ export class BreathDetector {
           blowing: false,
           sustaining: false,
           threshold,
+          breathiness: 0,
         })
         return
       }
@@ -523,7 +556,39 @@ export class BreathDetector {
       blowing: this.gateOpen,
       sustaining: sustaining && this.smoothed > 0,
       threshold,
+      breathiness: this.breathiness(energy, noisiness, threshold),
     })
+  }
+
+  /**
+   * How much breath is arriving, on a scale that starts before the gate does.
+   *
+   * Measured against the room rather than the trigger, so it means the same
+   * thing at any sensitivity: 1.0 is the ambient level the detector has been
+   * tracking, and anything meaningfully above that is somebody breathing.
+   * VISIBLE_FROM is a quarter above the room — comfortably clear of its own
+   * jitter, and far below what it takes to sound the pipe.
+   *
+   * Scaled by how breath-like the spectrum is, on a soft ramp rather than the
+   * gate's hard cut, so a hall full of singing doesn't fill the screen with
+   * smoke while still letting a breath show up long before it triggers.
+   */
+  private breathiness(energy: number, noisiness: number, threshold: number): number {
+    const floor = Math.max(NOISE_FLOOR_MIN, this.noiseFloor)
+    const rel = energy / floor
+
+    // Logarithmic, because loudness is. The range from a breath you can barely
+    // feel to a hard one spans two orders of magnitude in energy, so a linear
+    // map is saturated by the second-quietest thing that happens and reports
+    // everything above it as identical — which is the same fault, one layer
+    // down, as measuring against a ceiling that climbs to your hardest blow.
+    const top = Math.max(VISIBLE_FROM * 4, (threshold / floor) * FULL_AT_TRIGGERS)
+    const level = Math.log(rel / VISIBLE_FROM) / Math.log(top / VISIBLE_FROM)
+
+    const relax = this.sensitivity * 0.1
+    const like = (noisiness - (NOISE_HOLD - relax - 0.12)) / 0.12
+
+    return Math.max(0, Math.min(1, level)) * Math.max(0, Math.min(1, like))
   }
 
   private threshold(): number {

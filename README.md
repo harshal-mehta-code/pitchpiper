@@ -137,6 +137,24 @@ phone otherwise gives you nothing at all to go on — you cannot hear yourself
 over the speaker — and a drift of it when nothing is happening doubles as *it is
 listening*.
 
+It responds from the faintest breath, not from a hard one. That took fixing the
+signal rather than the picture: it was drawn from the reed's own drive, which is
+zero until the gate opens and is then measured against a ceiling that climbs to
+match your hardest-ever blow — so an ordinary breath after one big one read as
+almost nothing, and the smoke only really appeared at full blast. It now comes
+from a separate, continuous measure anchored to the room the detector has been
+tracking rather than to a personal best, on a logarithmic scale, because the
+range from a breath you can barely feel to a hard one spans two orders of
+magnitude and a linear map is saturated by the second-quietest thing that
+happens.
+
+How *much* smoke there is and how *fast* it moves are then read off that one
+signal with different curves. Volume answers "can it hear me", so it climbs
+steeply at the bottom and is half of full at a breath too soft to sound the
+pipe. Speed answers "how hard am I blowing", so it keeps climbing at the top,
+where there is somewhere left to go once the screen is already full. Between
+them the whole range says something.
+
 Three things turn a bag of particles into something that reads as fluid, and
 skipping any one of them gets you lint: each puff is a soft blob far bigger than
 the gap to its neighbour, so the eye sees a body rather than a scatter of marks;

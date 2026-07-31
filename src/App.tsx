@@ -430,7 +430,7 @@ export default function App() {
     // air invisible on exactly the platform where puff mode is the default.
     // What actually happened is a hard breath, so that is what gets drawn, and
     // the disc's own slow fall turns it into a wake.
-    airRef.current = 0.7 + 0.3 * strength
+    airRef.current = 0.75 + 0.25 * strength
     puffTimersRef.current.gust = window.setTimeout(() => {
       airRef.current = 0
     }, 240)
@@ -450,7 +450,10 @@ export default function App() {
   const handleBreathFrame = useCallback(
     (f: BreathFrame) => {
       breathFrameRef.current = f
-      airRef.current = f.pressure
+      // Not f.pressure — see BreathFrame.breathiness. The reed's drive is zero
+      // until the gate opens and is measured against your hardest-ever blow,
+      // which made the smoke appear only at full blast.
+      airRef.current = f.breathiness
       // A held note wins. If a thumb is on the hub, the mic stays out of it.
       if (soundModeRef.current === 'hold') return
 

@@ -45,11 +45,13 @@ function wantsStillness(): boolean {
 /**
  * Backing-store scale for the air layer.
  *
- * Deliberately below the screen's. Everything drawn there is a soft gradient
- * with no edge to resolve, so the pixels are better spent on covering more of
- * the screen than on covering it more finely.
+ * Well below the screen's, and lower again once the stream got dense enough to
+ * be worth looking at. Everything drawn there is a soft gradient with no edge
+ * to resolve, so the only thing a finer backing store buys is fill rate spent —
+ * and fill rate is the entire budget here. Dropping it is invisible; the frame
+ * it saves is not.
  */
-const AIR_DPR = 1
+const AIR_DPR = 0.7
 
 /** How long the ripple under a tapped hole lasts. */
 const PULSE_MS = 480
@@ -71,7 +73,7 @@ const TAP_MS = 260
  * from count, and each of these covers a hundred times the area — the budget
  * here is fill rate on a phone, not particle bookkeeping.
  */
-const MAX_MOTES = 64
+const MAX_MOTES = 72
 
 export interface PitchDiscProps {
   noteIndex: number
@@ -392,10 +394,27 @@ function blow(
   now: number,
   g: CanvasRenderingContext2D,
 ) {
-  const speed = (0.5 + 2.5 * air) * R * 0.011
+  // Volume and speed are pulled apart on purpose.
+  //
+  // How *much* smoke there is answers "can it hear me", and that has to be
+  // answerable from the faintest breath — so it rises steeply at the bottom of
+  // the range and is nearly saturated by the halfway point. How *fast* it moves
+  // answers "how hard am I blowing", and that wants the opposite: a curve that
+  // keeps climbing at the top, so there is somewhere left to go once the screen
+  // is already full of smoke. One signal, two readings, and between them the
+  // whole range says something.
+  const volume = Math.pow(air, 0.55)
+  const force = 0.22 + 0.78 * Math.pow(air, 1.25)
+
+  const speed = (0.35 + 3.4 * force) * R * 0.011
   const sprite = puff()
 
-  let spawn = 0.22 + 1.5 * air
+  // Scaled by pace as well as by volume. Spawning at a fixed rate per frame
+  // means a faster stream is a thinner one — each puff crosses the screen in
+  // less time, so fewer are on it — and the picture would quietly lose density
+  // exactly as you blew hardest. Population is rate times transit time; if the
+  // second term falls, the first has to rise.
+  let spawn = (0.22 + 1.9 * volume) * (0.55 + 0.8 * force)
   while (spawn > 0 && motes.length < MAX_MOTES) {
     if (spawn < 1 && Math.random() > spawn) break
     spawn -= 1
@@ -406,7 +425,9 @@ function blow(
       vy: -speed * (0.7 + Math.random() * 0.55),
       life: 1,
       decay: 0.0035 + Math.random() * 0.004,
-      size: R * (0.1 + Math.random() ** 2 * 0.42),
+      // Thinner as it goes faster, which is both what fast gas looks like and
+      // what keeps the fill rate flat as the count climbs.
+      size: R * (0.1 + Math.random() ** 2 * 0.42) * (1 - 0.2 * force),
       seed: Math.random() * 6.28,
       jet: false,
     })
@@ -416,8 +437,8 @@ function blow(
   // holes that are actually sounding breathe out small dense puffs that the
   // main stream then carries away — which is the difference between wind over
   // an object and an instrument being played.
-  if (air > 0.25 && holes.length) {
-    let jets = (air - 0.25) * 2.4
+  if (volume > 0.3 && holes.length) {
+    let jets = (volume - 0.3) * 2.6
     while (jets > 0 && motes.length < MAX_MOTES + 26) {
       if (jets < 1 && Math.random() > jets) break
       jets -= 1
@@ -426,11 +447,13 @@ function blow(
       motes.push({
         x: Math.cos(a) * r,
         y: Math.sin(a) * r,
-        vx: Math.cos(a) * speed * 0.4 + (Math.random() - 0.5) * speed * 0.25,
-        vy: Math.sin(a) * speed * 0.4 - speed * 0.4,
+        // Spread widely on purpose. A tight jet at full blow stops reading as
+        // gas and starts reading as a flame.
+        vx: Math.cos(a) * speed * 0.4 + (Math.random() - 0.5) * speed * 0.75,
+        vy: Math.sin(a) * speed * 0.4 - speed * (0.3 + Math.random() * 0.35),
         life: 1,
-        decay: 0.013 + Math.random() * 0.01,
-        size: R * (0.05 + Math.random() * 0.05),
+        decay: 0.012 + Math.random() * 0.01,
+        size: R * (0.07 + Math.random() * 0.08),
         seed: Math.random() * 6.28,
         jet: true,
       })
@@ -487,7 +510,7 @@ function blow(
     // Nothing here about the edges of the surface: the layer is masked in CSS,
     // which fades the composited result instead of each puff by where its
     // centre happens to be.
-    const alpha = (0.06 + 0.26 * air) * env * (m.jet ? 1.5 : 1)
+    const alpha = (0.05 + 0.3 * volume) * env * (m.jet ? 1.15 : 1)
     if (alpha <= 0.003) continue
 
     // Stretched along its own velocity, and hard. Fast gas smears into
@@ -881,7 +904,7 @@ export function PitchDisc({
           const a = airShownRef.current
           // Rises with the breath and falls well behind it, so a puff leaves a
           // wake instead of snapping off the moment the gate shuts.
-          airShownRef.current = a + (want - a) * (want > a ? 0.35 : 0.045)
+          airShownRef.current = a + (want - a) * (want > a ? 0.4 : 0.05)
           // The holes that are actually sounding: the whole stack, or the one
           // note under the pointer. Rotated with the disc, since they are
           // welded to it and the air is not.
