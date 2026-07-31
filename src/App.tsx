@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { PitchDisc } from './ui/PitchDisc'
-import { ControlTray } from './ui/ControlTray'
+import { ControlTray, type PlayMode } from './ui/ControlTray'
 import { BreathMeter } from './ui/BreathMeter'
 import { SettingsSheet } from './ui/SettingsSheet'
 import { TuneView, type TuneMode } from './ui/TuneView'
@@ -32,6 +32,7 @@ import {
   midiToName,
   noteLabel,
   PIPE_NOTES,
+  SEMITONES_IN_PIPE,
   STACK_ID,
   VOICE_PARTS,
   type ChordTone,
@@ -314,6 +315,18 @@ export default function App() {
     [setStack],
   )
 
+  /**
+   * Take one note back out, from the list under the disc.
+   *
+   * The cycle on the disc is quick once you know it, but undoing a mistake
+   * through it means tapping the same hole twice more and hearing both states on
+   * the way past. A note you can see is a note you should be able to strike out.
+   */
+  const dropStackNote = useCallback(
+    (offset: number) => setStack((prev) => prev.filter((v) => v !== offset)),
+    [setStack],
+  )
+
   // --- the setlist ---------------------------------------------------------
 
   /**
@@ -433,6 +446,9 @@ export default function App() {
   const handleBreathMode = useCallback(
     (on: boolean) => {
       setBreathMode(on)
+      // Kept in step here as well as on render, so anything called before React
+      // gets round to re-rendering sees the decision that has already been made.
+      breathOnRef.current = on
       const det = getDetector()
       if (on) {
         // A drone into an open microphone is the detector listening to us.
@@ -463,6 +479,33 @@ export default function App() {
     [clearPuffTimers, getDetector, stopSound],
   )
   handleBreathModeRef.current = handleBreathMode
+
+  /**
+   * One control for the three ways the pipe can be played.
+   *
+   * Breath and drone were separate toggles that quietly switched each other off.
+   * The behaviour was right and completely invisible; stating it as three
+   * exclusive choices costs nothing and explains itself. Everything here stays
+   * synchronous, because Safari only allows the microphone prompt while the tap
+   * that asked for it is still live.
+   */
+  const playMode: PlayMode = breathMode ? 'breath' : drone ? 'drone' : 'touch'
+  const setPlayMode = useCallback(
+    (m: PlayMode) => {
+      if (m === 'breath') {
+        handleBreathMode(true)
+        return
+      }
+      // The drone latch already stands breath down on its own way up.
+      if (m === 'drone') {
+        toggleDrone(true)
+        return
+      }
+      if (breathOnRef.current) handleBreathMode(false)
+      toggleDrone(false)
+    },
+    [handleBreathMode, toggleDrone],
+  )
 
   /** Switching input device means tearing the stream down and asking again. */
   const handleMicDevice = useCallback(
@@ -646,9 +689,15 @@ export default function App() {
     }))
   }, [chord, isStack, tones])
 
+  /** The offsets in the order the tones come out, so chips line up with tones. */
+  const stackOffsets = useMemo(
+    () => [...new Set(stack)].sort(byValue),
+    [stack],
+  )
+
   const centerSub = isStack
     ? stack.length
-      ? `Stack · ${stack.length}`
+      ? `${stack.length} note${stack.length > 1 ? 's' : ''}`
       : 'Tap the holes'
     : chord.id === 'unison'
       ? `${Math.round(tones[0].freq * 10) / 10} Hz`
@@ -666,15 +715,15 @@ export default function App() {
     [setNoteIndex],
   )
 
-  const hint = drone
-    ? 'Droning. Tap Drone again to stop; spin the ring to move it.'
-    : isStack
-    ? 'Tap holes to stack them. Tap again for an octave up.'
-    : !breathMode
-      ? 'Hold the middle. Spin the ring to change note.'
-      : breathResponse === 'puff'
-        ? 'One puff at the bottom of your phone — or hold the middle'
-        : 'Blow at your phone — or hold the middle'
+  const hint = isStack
+    ? 'Tap a hole: add → up an octave → off'
+    : drone
+      ? 'Droning — tap Touch to stop. Spin the ring to move it.'
+      : !breathMode
+        ? 'Hold the middle. Spin the ring to change note.'
+        : breathResponse === 'puff'
+          ? 'One puff at the bottom of your phone — or hold the middle'
+          : 'Blow at your phone — or hold the middle'
 
   const tuning = view === 'tune'
 
@@ -685,7 +734,26 @@ export default function App() {
           Pitch<span>Piper</span>
         </div>
         <div className="topbar-right">
-          <div className="tuning-badge">A={a4}</div>
+          {/* Named tabs rather than an icon that turns into a back arrow. The
+              tuner is half of what this app does, and an app should not need a
+              caption to admit it has a second screen. */}
+          <div className="segmented view-tabs" role="group" aria-label="View">
+            <button
+              className={`seg${tuning ? '' : ' is-on'}`}
+              onClick={() => tuning && toggleTuner()}
+              aria-pressed={!tuning}
+            >
+              Pipe
+            </button>
+            <button
+              className={`seg${tuning ? ' is-on' : ''}`}
+              onClick={() => !tuning && toggleTuner()}
+              aria-pressed={tuning}
+              title="Tuner — hear how you’re doing"
+            >
+              Tuner
+            </button>
+          </div>
           <button
             className={`icon-btn${setlistOpen ? ' is-on' : ''}`}
             onClick={() => setSetlistOpen(true)}
@@ -695,13 +763,12 @@ export default function App() {
             <ListIcon />
           </button>
           <button
-            className={`icon-btn${tuning ? ' is-on' : ''}`}
-            onClick={toggleTuner}
-            aria-pressed={tuning}
-            aria-label={tuning ? 'Back to the pipe' : 'Tuner'}
-            title={tuning ? 'Back to the pipe' : 'Tuner — hear how you’re doing'}
+            className="icon-btn"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Settings"
+            title="Settings"
           >
-            {tuning ? <BackIcon /> : <ForkIcon />}
+            <SlidersIcon />
           </button>
         </div>
       </header>
@@ -738,17 +805,37 @@ export default function App() {
             onToggleStack={toggleStack}
           />
           {/* Each part's actual note, so a director can just read them out
-              instead of working the chord out in their head. */}
+              instead of working the chord out in their head. In stack mode the
+              same row doubles as the edit list — what you built, and one tap to
+              take any of it back off. */}
           {tones.length > 1 && (
             <div className={`parts${isStack ? ' is-stack' : ''}`}>
-              {tones.map((t) => (
-                <div className="part" key={`${t.part}-${t.midi}`}>
-                  {!isStack && <span className="part-name">{t.part}</span>}
-                  <span className="part-note">
-                    {isStack ? t.part : midiToName(t.midi, useFlats)}
-                  </span>
-                </div>
-              ))}
+              {tones.map((t, i) =>
+                isStack ? (
+                  <button
+                    className="part part-chip"
+                    key={`${t.part}-${t.midi}`}
+                    onClick={() => dropStackNote(stackOffsets[i])}
+                    aria-label={`Remove ${t.part}`}
+                    title={`Remove ${t.part}`}
+                  >
+                    <span className="part-note">{t.part}</span>
+                    {stackOffsets[i] >= SEMITONES_IN_PIPE && (
+                      <span className="part-oct" aria-hidden="true">
+                        ↑
+                      </span>
+                    )}
+                    <span className="part-x" aria-hidden="true">
+                      ×
+                    </span>
+                  </button>
+                ) : (
+                  <div className="part" key={`${t.part}-${t.midi}`}>
+                    <span className="part-name">{t.part}</span>
+                    <span className="part-note">{midiToName(t.midi, useFlats)}</span>
+                  </div>
+                ),
+              )}
             </div>
           )}
           <p className="hint-line">{hint}</p>
@@ -767,14 +854,13 @@ export default function App() {
       <ControlTray
         chordId={chordId}
         onChordId={setChordId}
+        playMode={playMode}
+        onPlayMode={setPlayMode}
         octaveShift={octaveShift}
         onOctaveShift={setOctaveShift}
         hallMode={hallMode}
         onHallMode={setHallModeState}
-        breathMode={breathMode}
-        onBreathMode={handleBreathMode}
-        drone={drone}
-        onDrone={toggleDrone}
+        a4={a4}
         onOpenSettings={() => setSettingsOpen(true)}
         compact={tuning}
         // In the tuner the same picker chooses what is listened for and what
@@ -830,15 +916,6 @@ function byValue(a: number, b: number): number {
   return a - b
 }
 
-function ForkIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M8.5 3v7.5a3.5 3.5 0 0 0 7 0V3" />
-      <path d="M12 14v7" />
-    </svg>
-  )
-}
-
 function ListIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -848,10 +925,19 @@ function ListIcon() {
   )
 }
 
-function BackIcon() {
+/**
+ * Sliders, not a cogwheel.
+ *
+ * A cog drawn as a circle with eight spokes is a sun at seventeen pixels, and
+ * a brightness control is exactly the wrong guess. Sliders are unmistakable at
+ * any size, and they are also literally what is behind the button.
+ */
+function SlidersIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M14.5 5.5 8 12l6.5 6.5" />
+      <path d="M4 7.5h10M18.5 7.5H20M4 16.5h4M12.5 16.5H20" />
+      <circle cx="16" cy="7.5" r="2.5" />
+      <circle cx="10" cy="16.5" r="2.5" />
     </svg>
   )
 }

@@ -94,6 +94,7 @@ export function SetlistSheet(props: SetlistSheetProps) {
         onPointerDown={(e) => e.stopPropagation()}
       >
         <div className="sheet-grip" />
+        <div className="sheet-title">Setlist</div>
 
         {props.incoming && (
           <div className="incoming">

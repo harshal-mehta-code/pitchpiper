@@ -46,6 +46,11 @@ export interface TuneViewProps {
   onReferenceUp: () => void
 }
 
+const TAGLINE: Record<'voice' | 'chord', string> = {
+  voice: 'What one voice is singing, and how far off it is.',
+  chord: 'All four parts at once — who is flat, who is sharp.',
+}
+
 const STATUS_TEXT: Record<AnalyzerStatus, string> = {
   idle: 'Not listening',
   requesting: 'Asking for the microphone…',
@@ -181,6 +186,10 @@ export function TuneView(props: TuneViewProps) {
           Ring
         </button>
       </div>
+
+      {/* One line saying what this half does. Not shown for the ring test,
+          which introduces itself at length on the screen you land on. */}
+      {mode !== 'ring' && <p className="tune-tagline">{TAGLINE[mode]}</p>}
 
       {mode === 'ring' ? (
         <RingView

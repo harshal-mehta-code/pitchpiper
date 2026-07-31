@@ -55,6 +55,9 @@ export function SettingsSheet(props: SettingsSheetProps) {
         onPointerDown={(e) => e.stopPropagation()}
       >
         <div className="sheet-grip" />
+        <div className="sheet-title">Settings</div>
+
+        <Section>Sound</Section>
 
         <Row label="Concert pitch" value={`A = ${props.a4} Hz`}>
           <input
@@ -128,6 +131,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
             </button>
           </div>
         </Row>
+
+        <Section>Breath</Section>
 
         <Row
           label="How breath sounds it"
@@ -240,6 +245,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
           </p>
         </Row>
 
+        <Section>Rehearsal</Section>
+
         <Row label="Keep screen awake" value={props.keepAwake ? 'On' : 'Off'}>
           <div className="switch-row">
             <button
@@ -319,6 +326,17 @@ function MicDiagnostics({
       </p>
     </div>
   )
+}
+
+/**
+ * A heading every few rows.
+ *
+ * This sheet has grown to nine controls, and nine equal rows in a scrolling
+ * panel is a list you read rather than a panel you scan. Three headings turn it
+ * back into somewhere you can find one thing.
+ */
+function Section({ children }: { children: React.ReactNode }) {
+  return <div className="sheet-section">{children}</div>
 }
 
 function Row({

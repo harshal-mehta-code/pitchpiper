@@ -26,6 +26,9 @@ const FRICTION = 0.945
  */
 const DISC_FILL = 0.88
 
+/** How long the ripple under a tapped hole lasts. */
+const PULSE_MS = 480
+
 export interface PitchDiscProps {
   noteIndex: number
   onNoteIndexChange: (index: number) => void
@@ -39,10 +42,15 @@ export interface PitchDiscProps {
   onHubUp: () => void
   /**
    * Stack mode. Semitone offsets from the bottom hole, so 0..12 is a hole as
-   * engraved and 13..24 is the same hole an octave up. Tapping the ring cycles
-   * a hole through off → in → an octave up → off, which is the whole of the
-   * interface for building a custom voicing: no extra panel, no note list, just
-   * the instrument with more of it lit.
+   * engraved and 13..24 is the same hole an octave up. Tapping a hole cycles it
+   * through off → in → an octave up → off, which is the whole of the interface
+   * for building a custom voicing: no extra panel, no note list, just the
+   * instrument with more of it lit.
+   *
+   * Crucially the disc does *not* turn to a hole you tap here. Every hole is on
+   * screen at once, so the rotation buys nothing, and watching the thing swing
+   * round under your thumb on every tap made picking four notes feel like a
+   * fight. In stack mode the disc holds still and only the light moves.
    */
   stack?: number[]
   stackMode?: boolean
@@ -270,6 +278,14 @@ export function PitchDisc({
   const stackRef = useRef<number[]>(stack ?? [])
   const stackModeRef = useRef(false)
   const toggleRef = useRef(onToggleStack)
+  /**
+   * Taps waiting to be drawn as a ripple at the hole they landed on.
+   *
+   * The disc no longer turns to a tapped hole, so the confirmation that used to
+   * come from the movement has to come from somewhere — and it should come from
+   * the place your thumb actually touched.
+   */
+  const pulsesRef = useRef<{ index: number; t: number }[]>([])
 
   hubActiveRef.current = hubActive
   centerRef.current = { label: centerLabel, sub: centerSub }
@@ -449,16 +465,31 @@ export function PitchDisc({
       // over the pre-rendered face rather than into it, because the set changes
       // on every tap and re-engraving the whole disc for that would be absurd.
       const marks = stackRef.current
-      if (marks.length) {
+      if (stackModeRef.current || marks.length) {
         const holeR = R * 0.545
         const rr = R * 0.052
+        const now = performance.now()
+        pulsesRef.current = pulsesRef.current.filter((p) => now - p.t < PULSE_MS)
+
         for (let i = 0; i < NOTE_COUNT; i++) {
           const inStack = marks.includes(i)
           const raised = marks.includes(i + 12)
-          if (!inStack && !raised) continue
           const a = i * STEP - Math.PI / 2
           const x = Math.cos(a) * holeR
           const y = Math.sin(a) * holeR
+
+          // Every hole is a target while a stack is being built, and the only
+          // way to know that without being told is for every hole to say so.
+          if (stackModeRef.current && !inStack && !raised) {
+            g.beginPath()
+            g.arc(x, y, rr + 2.6 * dpr, 0, Math.PI * 2)
+            g.lineWidth = 1.2 * dpr
+            g.setLineDash([2.4 * dpr, 3.6 * dpr])
+            g.strokeStyle = 'rgba(255, 228, 170, 0.32)'
+            g.stroke()
+            g.setLineDash([])
+          }
+          if (!inStack && !raised) continue
 
           // The hole reads as *open* — lit from within, the way a hole you're
           // blowing through would be.
@@ -477,24 +508,36 @@ export function PitchDisc({
           g.strokeStyle = 'rgba(255, 214, 140, 0.9)'
           g.stroke()
 
-          // A caret pointing outward for the octave-up copy of a hole.
+          // Octave up gets a second ring rather than an arrow. An arrow has to
+          // be rotated to sit square on its hole, which at the bottom of the
+          // disc leaves it pointing sideways and reading as a stray chevron —
+          // and pushed far enough out to clear the glow it lands on the
+          // engraved letter. A ring around a ring has no orientation to get
+          // wrong, and it says the same thing: this one is doubled.
           if (raised) {
-            const tipR = holeR + rr * 2.9
-            g.save()
-            g.translate(Math.cos(a) * tipR, Math.sin(a) * tipR)
-            g.rotate(a + Math.PI / 2)
-            const w = rr * 0.75
             g.beginPath()
-            g.moveTo(-w, w * 0.6)
-            g.lineTo(0, -w * 0.5)
-            g.lineTo(w, w * 0.6)
-            g.lineWidth = 1.8 * dpr
-            g.lineCap = 'round'
-            g.lineJoin = 'round'
-            g.strokeStyle = 'rgba(255, 214, 140, 0.95)'
+            g.arc(x, y, rr + 6 * dpr, 0, Math.PI * 2)
+            g.lineWidth = 1.4 * dpr
+            g.strokeStyle = 'rgba(255, 214, 140, 0.75)'
             g.stroke()
-            g.restore()
           }
+        }
+
+        // The ripple that used to be a swing of the whole disc.
+        for (const pulse of pulsesRef.current) {
+          const k = (now - pulse.t) / PULSE_MS
+          const a = pulse.index * STEP - Math.PI / 2
+          g.beginPath()
+          g.arc(
+            Math.cos(a) * holeR,
+            Math.sin(a) * holeR,
+            rr * (1 + k * 3.6),
+            0,
+            Math.PI * 2,
+          )
+          g.lineWidth = 2.6 * dpr * (1 - k)
+          g.strokeStyle = `rgba(255, 216, 145, ${0.7 * (1 - k)})`
+          g.stroke()
         }
       }
       g.restore()
@@ -686,10 +729,17 @@ export function PitchDisc({
         const k = Math.round((angle + Math.PI / 2 - angleRef.current) / STEP)
         const tapped = ((k % NOTE_COUNT) + NOTE_COUNT) % NOTE_COUNT
         velRef.current = 0
-        targetRef.current = angleForIndex(tapped, angleRef.current)
-        // In stack mode the tap also changes what that hole is doing. The disc
-        // still spins to it, so you can see which one you hit.
-        if (stackModeRef.current) toggleRef.current?.(tapped)
+        if (stackModeRef.current) {
+          // Building a stack is a series of taps, and turning the whole disc
+          // under the thumb between each one is disorienting for no gain: every
+          // hole is already reachable. Light the hole, ripple where the finger
+          // landed, buzz, and leave the disc exactly where it was.
+          toggleRef.current?.(tapped)
+          pulsesRef.current.push({ index: tapped, t: performance.now() })
+          if (navigator.vibrate) navigator.vibrate(12)
+        } else {
+          targetRef.current = angleForIndex(tapped, angleRef.current)
+        }
       }
     },
     [localAngle, onHubUp],
@@ -706,7 +756,11 @@ export function PitchDisc({
         onPointerCancel={endPointer}
         role="slider"
         tabIndex={0}
-        aria-label="Pitch pipe. Left and right arrows change note, space sounds it."
+        aria-label={
+          stackMode
+            ? 'Pitch pipe in stack mode. Tap a hole to add it, again to raise it an octave, again to remove it.'
+            : 'Pitch pipe. Left and right arrows change note, space sounds it.'
+        }
         aria-valuemin={0}
         aria-valuemax={NOTE_COUNT - 1}
         aria-valuenow={noteIndex}

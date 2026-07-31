@@ -75,11 +75,19 @@ chorus opens the same list with no account, no sign-in and nothing uploaded
 anywhere. A list that arrives by link is shown and offered, never merged on your
 behalf.
 
-**Stack.** The `⁘` chord button turns the disc into a note picker: tap holes to
-stack them, tap again to lift one an octave, tap once more to drop it. Any set
-of notes you like, sounded together — a diminished chord, two notes to check an
-interval, the whole scale at once. The stack is remembered, and the tuner will
-listen for it just like a preset chord.
+**Stack.** The last button on the chord row turns the disc into a note picker:
+tap holes to stack them, tap again to lift one an octave, tap once more to drop
+it. Any set of notes you like, sounded together — a diminished chord, two notes
+to check an interval, the whole scale at once. The stack is remembered, and the
+tuner will listen for it just like a preset chord.
+
+The disc deliberately does **not** turn to a hole you tap here. Every hole is on
+screen the whole time, so the rotation bought nothing and made picking four
+notes feel like a fight; instead the hole ripples where your thumb landed, the
+phone buzzes, and the pipe stays put. Untouched holes wear a dotted ring so it
+is obvious all thirteen are live, a note an octave up wears a second ring, and
+what you have built is listed underneath — one tap on any of it to take it back
+off.
 
 **Chord Bloom.** Give the whole four-part chord instead of blowing four notes in
 a row. Major, barbershop 7th, minor 7th and major 6th, voiced Bass / Bari /
@@ -96,9 +104,14 @@ piano would put it, and it is meant to; a tuner that measured you against equal
 temperament would tell a perfectly locked chord it was badly flat. Equal
 temperament is one tap away for when you're tuning to a piano.
 
-**Drone.** Latch the pitch on and leave it running while both hands are free —
-for matching a vowel, finding a chord by ear, or holding a reference while a
-section works something out. The tuner's reference button latches too.
+**Three ways to play, in one control.** Touch, Breath and Drone sit together as
+one picker, because they are three answers to a single question and only one of
+them can be true at a time. **Touch** is a thumb on the middle. **Breath** is
+the microphone. **Drone** latches the pitch on and leaves it running while both
+hands are free — for matching a vowel, finding a chord by ear, or holding a
+reference while a section works something out. Breath and Drone were separate
+toggles that quietly switched each other off: the behaviour was right and
+completely invisible. The tuner's reference button latches too.
 
 **Hall Mode.** A phone speaker against forty singers in a church basement is a
 losing fight. Hall Mode drops the lows the speaker can't produce anyway,
@@ -228,12 +241,17 @@ Everything runs client-side. No backend, no accounts, no analytics.
 |---|---|
 | Drag the ring | spin the pipe |
 | Tap a note | jump to it |
-| Tap a note in Stack | add it, lift it an octave, remove it |
+| Tap a note in Stack | add it, lift it an octave, remove it — without moving the pipe |
 | Hold the middle | sound it |
 | Space | sound it (desktop) |
 | ← / → | previous / next note |
+| Pipe / Tuner, top right | the two screens |
 | List icon, top right | the setlist |
-| Tuning fork, top right | the tuner and the ring test |
+| Sliders icon, top right | settings |
+
+Everything else is quiet until it isn't: concert pitch only appears on the tray
+once you have moved it off 440, so the default case carries no badge at all and
+a chorus that has been at 442 all evening cannot miss it.
 
 ## Not built yet
 
