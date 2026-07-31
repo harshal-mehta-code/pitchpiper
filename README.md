@@ -130,12 +130,23 @@ instrument away — the middle of the pipe keeps working exactly as it did. That
 is why it is a plain toggle and not one of a set of ways to play: there is only
 one way to play, and breath is another way to reach it.
 
-While the microphone is open, air streams up from the bottom of the screen and
-spills around the pipe, faster and brighter the harder you blow, with short
-bright wisps coming out through the holes that are actually sounding. Blowing at
-a phone otherwise gives you nothing at all to go on — you cannot hear yourself
-over the speaker — and a drift of air when nothing is happening doubles as *it
-is listening*.
+While the microphone is open, smoke streams up from the bottom of the screen and
+spills around the pipe, faster and thicker the harder you blow, with denser
+puffs breathing out through the holes that are actually sounding. Blowing at a
+phone otherwise gives you nothing at all to go on — you cannot hear yourself
+over the speaker — and a drift of it when nothing is happening doubles as *it is
+listening*.
+
+Three things turn a bag of particles into something that reads as fluid, and
+skipping any one of them gets you lint: each puff is a soft blob far bigger than
+the gap to its neighbour, so the eye sees a body rather than a scatter of marks;
+near the disc the flow is pushed outward along the radius, falling off with the
+square of distance, so it spills round the rim like air round something solid;
+and two sine terms of differing frequency, sampled at each puff's own position
+and drifting with time, stand in for a curl-noise field so the stream braids and
+folds instead of running in parallel lines. Puffs also grow as they age and
+smear along their own velocity, which is most of what separates a volume of gas
+from a dot with an opacity.
 
 One puff mode gets a gust rather than a stream. The microphone is released the
 instant the puff fires, so no frame ever reports the breath at full pressure;
@@ -213,6 +224,13 @@ simply do nothing where absent. Sample rates are read from the context rather
 than assumed, so a narrowband headset stream is analysed only across the
 bandwidth it actually carries.
 
+The smoke costs real fill rate, so it is not drawn when nobody can see it — a
+sheet over the disc, or the browser in the background — and not at all if the
+system asks for reduced motion, which is exactly the setting someone turns on to
+be rid of a screenful of drifting weather. The breath meter still reports what
+the microphone hears either way. It is measured under software rasterisation,
+where the whole app holds one frame per vsync.
+
 Known limits, honestly: iOS has no vibration API, so detents there are audible
 but not tactile. Bluetooth headset microphones run their own noise suppression
 that strips breath before the page ever sees it — the input picker lets you
@@ -256,7 +274,7 @@ src/
     notes.ts      the thirteen holes, tuning maths, barbershop voicings
     setlist.ts    saved pitches, and packing a list into a URL
   ui/
-    PitchDisc.tsx the brass disc (canvas), and the air over it
+    PitchDisc.tsx the brass disc (canvas), and the smoke over it
     TuneView.tsx  the tuner — one voice, every part, the ring test
     RingView.tsx  recording, and the report afterwards
     NeedsChord.tsx what to say when there is nothing to listen for yet

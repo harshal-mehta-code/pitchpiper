@@ -886,6 +886,7 @@ export default function App() {
             latched={drone}
             airRef={airRef}
             breathOn={breathMode}
+            obscured={settingsOpen || setlistOpen}
             stack={isStack ? stack : undefined}
             stackMode={isStack}
             onToggleStack={toggleStack}

@@ -120,7 +120,11 @@ body {
 
 /* --- top bar -------------------------------------------------------------- */
 
+/* Above the air, which is sized generously and centred on the disc: on a short
+   screen it can reach past the stage, and chrome should never be under weather. */
 .topbar {
+  position: relative;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -284,6 +288,43 @@ body {
 .disc-canvas {
   position: relative;
   z-index: 1;
+}
+
+/* The air, on a surface of its own so a stream that is meant to blow across
+   the screen is not confined to a square barely wider than the instrument. It
+   sits above the metal — smoke in front of a lit object — and is additive, so
+   it can only add light and never obscures the note in the middle. */
+.air-canvas {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  /* Never wider than the disc's own box, which is already 96vw: an absolutely
+     positioned layer that overhangs the viewport shows up as page width even
+     with the document set not to scroll. Height is free to be generous. */
+  width: 100%;
+  height: 190%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 2;
+  /* The layer fades at its own edges, rather than each puff fading by how close
+     its centre is to one. A puff is a couple of hundred pixels across, so a
+     fade driven by its centre either clips it mid-body — the same hard
+     rectangle the glow used to draw — or has to be so wide that it erases the
+     half of the surface where the stream is born. Masking the composited
+     result gets both. Where masks are unsupported the cost is a visible edge,
+     not a broken layout. */
+  -webkit-mask-image: radial-gradient(
+    ellipse closest-side,
+    #000 0%,
+    #000 64%,
+    transparent 100%
+  );
+  mask-image: radial-gradient(
+    ellipse closest-side,
+    #000 0%,
+    #000 64%,
+    transparent 100%
+  );
 }
 
 .disc-canvas {
@@ -759,6 +800,7 @@ body {
 
 .tray {
   position: relative;
+  z-index: 3;
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;

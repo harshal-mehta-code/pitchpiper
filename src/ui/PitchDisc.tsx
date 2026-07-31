@@ -27,6 +27,30 @@ const FRICTION = 0.945
  */
 const DISC_FILL = 0.88
 
+/**
+ * Whether to draw the air at all.
+ *
+ * A screenful of drifting smoke is exactly the kind of ambient motion someone
+ * with vestibular sensitivity turns that setting on to be rid of. The breath
+ * meter below the disc still reports what the microphone is hearing, so nothing
+ * is lost but the weather.
+ */
+function wantsStillness(): boolean {
+  return (
+    typeof matchMedia === 'function' &&
+    matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+}
+
+/**
+ * Backing-store scale for the air layer.
+ *
+ * Deliberately below the screen's. Everything drawn there is a soft gradient
+ * with no edge to resolve, so the pixels are better spent on covering more of
+ * the screen than on covering it more finely.
+ */
+const AIR_DPR = 1
+
 /** How long the ripple under a tapped hole lasts. */
 const PULSE_MS = 480
 
@@ -40,8 +64,14 @@ const PULSE_MS = 480
  */
 const TAP_MS = 260
 
-/** How many air streaks can be in flight at full blow. */
-const MAX_MOTES = 90
+/**
+ * How many puffs of air can be in flight at full blow.
+ *
+ * Fewer than the old streaks, and much bigger. Volume comes from overlap, not
+ * from count, and each of these covers a hundred times the area — the budget
+ * here is fill rate on a phone, not particle bookkeeping.
+ */
+const MAX_MOTES = 64
 
 export interface PitchDiscProps {
   noteIndex: number
@@ -69,6 +99,13 @@ export interface PitchDiscProps {
    */
   airRef?: RefObject<number>
   breathOn?: boolean
+  /**
+   * Something is covering the disc — a sheet, or the browser being in the
+   * background. The air is the most expensive thing on screen and the least
+   * necessary one, and drawing weather nobody can see measurably slows down
+   * everything that *is* being looked at.
+   */
+  obscured?: boolean
   /**
    * Stack mode. Semitone offsets from the bottom hole, so 0..12 is a hole as
    * engraved and 13..24 is the same hole an octave up. A tap puts a hole in or
@@ -277,57 +314,111 @@ interface Mote {
   /** 1 at birth, 0 at death. */
   life: number
   decay: number
-  weight: number
+  /** Radius in device pixels at birth. Puffs expand as they age. */
+  size: number
+  /** Fixed per puff, so each one meanders on its own phase. */
+  seed: number
   /** Came out of a hole rather than in from the bottom of the screen. */
   jet: boolean
 }
 
 /**
+ * One soft puff, drawn once and blitted thereafter.
+ *
+ * Smoke is not a collection of lines. The first version stroked a short segment
+ * per particle, which is cheap and reads as exactly what it is: lint. Volume
+ * comes from many soft-edged blobs overlapping, and the only way to afford
+ * enough of those is to render the blob once and scale it — building a radial
+ * gradient per particle per frame is a different order of cost entirely.
+ *
+ * The colour is baked in. Density is controlled with globalAlpha, and the
+ * additive blend does the rest.
+ */
+let puffSprite: HTMLCanvasElement | null = null
+
+function puff(): HTMLCanvasElement {
+  if (puffSprite) return puffSprite
+  const size = 128
+  const c = document.createElement('canvas')
+  c.width = size
+  c.height = size
+  const g = c.getContext('2d')!
+  const r = size / 2
+  const grad = g.createRadialGradient(r, r, 0, r, r, r)
+  // A long, soft shoulder. A tight falloff gives you a ball of light; smoke
+  // wants most of its mass out in the tail where the edges can dissolve into
+  // each other.
+  grad.addColorStop(0, 'rgba(255, 240, 210, 0.55)')
+  grad.addColorStop(0.25, 'rgba(255, 234, 196, 0.3)')
+  grad.addColorStop(0.55, 'rgba(255, 226, 180, 0.1)')
+  grad.addColorStop(0.8, 'rgba(255, 220, 170, 0.028)')
+  grad.addColorStop(1, 'rgba(255, 220, 170, 0)')
+  g.fillStyle = grad
+  g.fillRect(0, 0, size, size)
+  puffSprite = c
+  return c
+}
+
+/**
  * One frame of air.
  *
- * Streaks enter from the bottom of the screen — where you are blowing — and
- * rush upward past the pipe. Near the disc they are pushed outward along the
- * radius, which for the cost of one divide reads convincingly as air spilling
- * around something solid rather than through it.
+ * A stream enters from the bottom of the screen — where you are blowing — and
+ * rushes up past the pipe. Three things turn a bag of particles into something
+ * that reads as fluid, and all three matter:
  *
- * `air` is 0..1 breath pressure. It drives all three of the things an eye
- * actually reads as wind: how many streaks there are, how fast they go, and how
- * brightly they show up.
+ *  - **Volume.** Each puff is a soft blob far bigger than the distance between
+ *    puffs, so neighbours overlap and the eye sees a continuous body rather
+ *    than a scatter of marks.
+ *  - **Obstruction.** Near the disc the flow is pushed outward along the
+ *    radius, falling off with the square of distance, so it spills round the
+ *    rim the way air spills round something solid.
+ *  - **Turbulence.** Two sine terms of differing frequency, sampled at the
+ *    puff's own position and drifting with time, stand in for a curl-noise
+ *    field. Real curl noise would be better and this is close enough that the
+ *    stream visibly braids and folds instead of running in parallel lines.
+ *
+ * `air` is 0..1 breath pressure, and it drives everything an eye reads as
+ * force: how much smoke there is, how fast it goes, how far it stretches along
+ * its own velocity, and how brightly it shows up.
  */
 function blow(
   motes: Mote[],
   air: number,
-  half: number,
+  halfW: number,
+  halfH: number,
   R: number,
   angle: number,
   holes: number[],
+  now: number,
   g: CanvasRenderingContext2D,
 ) {
-  const speed = (0.55 + 2.7 * air) * R * 0.012
+  const speed = (0.5 + 2.5 * air) * R * 0.011
+  const sprite = puff()
 
-  let spawn = 0.15 + 2.2 * air
+  let spawn = 0.22 + 1.5 * air
   while (spawn > 0 && motes.length < MAX_MOTES) {
     if (spawn < 1 && Math.random() > spawn) break
     spawn -= 1
     motes.push({
-      x: (Math.random() * 2 - 1) * half,
-      y: half * (1 + Math.random() * 0.25),
-      vx: (Math.random() * 2 - 1) * speed * 0.18,
-      vy: -speed * (0.75 + Math.random() * 0.5),
+      x: (Math.random() * 2 - 1) * halfW,
+      y: halfH * (1 + Math.random() * 0.25),
+      vx: (Math.random() * 2 - 1) * speed * 0.2,
+      vy: -speed * (0.7 + Math.random() * 0.55),
       life: 1,
-      decay: 0.004 + Math.random() * 0.004,
-      weight: 0.5 + Math.random() * 0.9,
+      decay: 0.0035 + Math.random() * 0.004,
+      size: R * (0.1 + Math.random() ** 2 * 0.42),
+      seed: Math.random() * 6.28,
       jet: false,
     })
   }
 
   // And some of it goes *through* the pipe. Once you are blowing properly, the
-  // holes that are actually sounding spit out short bright wisps that the main
-  // stream then carries away — which is the difference between wind over an
-  // object and an instrument being played.
-  if (air > 0.28 && holes.length) {
-    let jets = (air - 0.28) * 1.9
-    while (jets > 0 && motes.length < MAX_MOTES + 24) {
+  // holes that are actually sounding breathe out small dense puffs that the
+  // main stream then carries away — which is the difference between wind over
+  // an object and an instrument being played.
+  if (air > 0.25 && holes.length) {
+    let jets = (air - 0.25) * 2.4
+    while (jets > 0 && motes.length < MAX_MOTES + 26) {
       if (jets < 1 && Math.random() > jets) break
       jets -= 1
       const a = holes[(Math.random() * holes.length) | 0] * STEP - Math.PI / 2 + angle
@@ -335,55 +426,82 @@ function blow(
       motes.push({
         x: Math.cos(a) * r,
         y: Math.sin(a) * r,
-        vx: Math.cos(a) * speed * 0.5 + (Math.random() - 0.5) * speed * 0.2,
-        vy: Math.sin(a) * speed * 0.5 - speed * 0.45,
+        vx: Math.cos(a) * speed * 0.4 + (Math.random() - 0.5) * speed * 0.25,
+        vy: Math.sin(a) * speed * 0.4 - speed * 0.4,
         life: 1,
-        decay: 0.028 + Math.random() * 0.02,
-        weight: 0.35 + Math.random() * 0.4,
+        decay: 0.013 + Math.random() * 0.01,
+        size: R * (0.05 + Math.random() * 0.05),
+        seed: Math.random() * 6.28,
         jet: true,
       })
     }
   }
 
   g.save()
-  // Additive, so streaks crossing each other brighten instead of muddying, and
-  // so they read as light rather than as paint on the metal.
+  // Additive: smoke crossing smoke brightens instead of muddying, and over the
+  // brass it reads as light scattering through haze rather than paint on metal.
   g.globalCompositeOperation = 'lighter'
-  g.lineCap = 'round'
+
+  const t = now * 0.001
 
   for (let i = motes.length - 1; i >= 0; i--) {
     const m = motes[i]
+
     const d = Math.hypot(m.x, m.y) || 1
-    // Falls off with the square of distance, so it is decisive right at the rim
-    // and negligible out at the corners.
-    // Tuned so most of the stream spills round the rim but some of it carries
-    // over the top, which is what air does and what a wall of it does not.
-    const push = Math.min(speed * 0.45, ((R * 0.62) / d) ** 2 * speed * 0.055)
+    const push = Math.min(speed * 0.5, ((R * 0.62) / d) ** 2 * speed * 0.06)
     m.vx += (m.x / d) * push
     m.vy += (m.y / d) * push
-    m.vx *= 0.99
-    m.vy *= 0.99
+
+    // The stand-in for curl noise. Sampled in the puff's own frame so the field
+    // is coherent — neighbours get near-identical nudges and travel together,
+    // which is what makes a body of smoke fold rather than fray.
+    const swirl =
+      Math.sin(m.y * 0.011 + t * 1.3 + m.seed) +
+      0.55 * Math.sin(m.x * 0.008 - t * 0.9 + m.seed * 1.7)
+    m.vx += swirl * speed * 0.08
+    m.vy += 0.4 * Math.cos(m.x * 0.009 + t * 1.1 + m.seed) * speed * 0.03
+
+    m.vx *= 0.985
+    m.vy *= 0.985
     m.x += m.vx
     m.y += m.vy
     m.life -= m.decay
 
-    if (m.life <= 0 || m.y < -half * 1.3) {
+    if (m.life <= 0 || m.y < -halfH * 1.2) {
       motes.splice(i, 1)
       continue
     }
 
-    // Fade in and out at the edges of the canvas, so nothing pops into being at
-    // a boundary the eye would otherwise never notice.
-    const edge = Math.min(1, ((half * 1.25 - Math.abs(m.y)) / (half * 0.45)) ** 2)
-    const alpha = (0.09 + 0.58 * air) * Math.min(1, m.life * 3) * edge * (m.jet ? 1.5 : 1)
-    if (alpha <= 0.004) continue
+    // Smoke expands as it goes. Growing rather than merely fading is most of
+    // why a puff looks like a volume of gas and not a dot with an opacity.
+    const age = 1 - m.life
+    const size = m.size * (1 + age * (m.jet ? 2.6 : 1.1))
 
-    g.beginPath()
-    g.moveTo(m.x - m.vx * (m.jet ? 3 : 5), m.y - m.vy * (m.jet ? 3 : 5))
-    g.lineTo(m.x, m.y)
-    g.lineWidth = m.weight * (0.7 + 1.2 * air) * (R * 0.0058)
-    g.strokeStyle = `rgba(255, 236, 198, ${Math.min(0.85, alpha)})`
-    g.stroke()
+    // In from nothing, out to nothing. A puff that appears at full strength is
+    // a puff you can count.
+    const env = Math.min(1, age * 6) * Math.min(1, m.life * 2.6)
+    // Faded to nothing at every side of this surface, not just the two the
+    // flow happens to cross. Smoke that stops along a straight line is a
+    // rectangle you didn't know was there — the same fault the glow had, and
+    // more obvious here because there is more of it.
+    // Nothing here about the edges of the surface: the layer is masked in CSS,
+    // which fades the composited result instead of each puff by where its
+    // centre happens to be.
+    const alpha = (0.06 + 0.26 * air) * env * (m.jet ? 1.5 : 1)
+    if (alpha <= 0.003) continue
+
+    // Stretched along its own velocity, and hard. Fast gas smears into
+    // filaments; without this the stream is a procession of round blobs, which
+    // is a lava lamp and not a wind.
+    const v = Math.hypot(m.vx, m.vy)
+    const stretch = 1 + Math.min(3.4, v / (R * 0.014))
+
+    g.save()
+    g.translate(m.x, m.y)
+    g.rotate(Math.atan2(m.vy, m.vx))
+    g.globalAlpha = Math.min(0.85, alpha)
+    g.drawImage(sprite, -size * stretch, -size, size * 2 * stretch, size * 2)
+    g.restore()
   }
 
   g.restore()
@@ -406,6 +524,7 @@ export function PitchDisc({
   latched,
   airRef,
   breathOn,
+  obscured,
   stack,
   stackMode,
   onToggleStack,
@@ -421,6 +540,18 @@ export function PitchDisc({
    * fade to nothing on its own terms.
    */
   const glowElRef = useRef<HTMLDivElement>(null)
+  /**
+   * The air gets a surface of its own, larger than the disc's.
+   *
+   * Painting it into the disc canvas confined a stream that is supposed to
+   * blow across the screen to a square barely wider than the instrument, and
+   * fog reaching the edge of that square drew exactly the hard rectangle the
+   * glow used to. Out here it has room to arrive and leave. Backed at a lower
+   * pixel ratio than the disc on purpose: every mark on it is a soft gradient
+   * with no edge to resolve, and the fill rate is better spent on area.
+   */
+  const airRef2 = useRef<HTMLCanvasElement>(null)
+  const airSizeRef = useRef({ w: 0, h: 0 })
 
   const faceRef = useRef<HTMLCanvasElement | null>(null)
   const sizeRef = useRef(0)
@@ -468,6 +599,10 @@ export function PitchDisc({
    * but nothing is happening, which doubles as "it is listening".
    */
   const motesRef = useRef<Mote[]>([])
+  const stillRef = useRef(false)
+  stillRef.current = wantsStillness()
+  const obscuredRef = useRef(false)
+  obscuredRef.current = obscured ?? false
   /** Smoothed pressure. Rises fast, falls slowly, so a puff leaves a wake. */
   const airShownRef = useRef(0)
 
@@ -513,6 +648,20 @@ export function PitchDisc({
       canvas.style.height = `${size}px`
       discPxRef.current = Math.floor(size * dpr * DISC_FILL)
       faceRef.current = renderDiscFace(discPxRef.current, labels)
+
+      const air = airRef2.current
+      if (air) {
+        const ar = air.getBoundingClientRect()
+        const w = Math.max(1, Math.floor(ar.width * AIR_DPR))
+        const h = Math.max(1, Math.floor(ar.height * AIR_DPR))
+        if (air.width !== w || air.height !== h) {
+          air.width = w
+          air.height = h
+        }
+        // In disc pixels, so the flow can be written against the disc's own
+        // radius without a second set of units to keep straight.
+        airSizeRef.current = { w: (w / AIR_DPR) * dpr, h: (h / AIR_DPR) * dpr }
+      }
     }
 
     resize()
@@ -720,32 +869,45 @@ export function PitchDisc({
       g.restore()
 
       // --- air ---------------------------------------------------------------
-      // Over the metal, under the pointer and the note in the middle: those two
-      // are what you read, and nothing should blow across them.
-      if (breathOnRef.current) {
-        const want = Math.max(0, Math.min(1, airRef?.current ?? 0))
-        const a = airShownRef.current
-        // Rises with the breath and falls well behind it, so a puff leaves a
-        // wake instead of snapping off the moment the gate shuts.
-        airShownRef.current = a + (want - a) * (want > a ? 0.35 : 0.045)
-        // The holes that are actually sounding: the whole stack, or the one
-        // note under the pointer. Rotated with the disc, since they are welded
-        // to it and the air is not.
-        const lit = stackModeRef.current
-          ? [...new Set(stackRef.current.map(stackHole))]
-          : [lastIndexRef.current]
-        blow(
-          motesRef.current,
-          airShownRef.current,
-          px / 2,
-          R,
-          angleRef.current,
-          lit,
-          g,
-        )
-      } else if (motesRef.current.length) {
-        motesRef.current.length = 0
-        airShownRef.current = 0
+      const airCanvas = airRef2.current
+      const ag = airCanvas?.getContext('2d')
+      if (airCanvas && ag) {
+        ag.setTransform(1, 0, 0, 1, 0, 0)
+        ag.clearRect(0, 0, airCanvas.width, airCanvas.height)
+        const hidden =
+          obscuredRef.current || (typeof document !== 'undefined' && document.hidden)
+        if (breathOnRef.current && !stillRef.current && !hidden) {
+          const want = Math.max(0, Math.min(1, airRef?.current ?? 0))
+          const a = airShownRef.current
+          // Rises with the breath and falls well behind it, so a puff leaves a
+          // wake instead of snapping off the moment the gate shuts.
+          airShownRef.current = a + (want - a) * (want > a ? 0.35 : 0.045)
+          // The holes that are actually sounding: the whole stack, or the one
+          // note under the pointer. Rotated with the disc, since they are
+          // welded to it and the air is not.
+          const lit = stackModeRef.current
+            ? [...new Set(stackRef.current.map(stackHole))]
+            : [lastIndexRef.current]
+          const { w, h } = airSizeRef.current
+          // Scaled so the flow can be written in the disc's pixels while the
+          // surface underneath is backed more coarsely.
+          const k = airCanvas.width / (w || 1)
+          ag.setTransform(k, 0, 0, k, airCanvas.width / 2, airCanvas.height / 2)
+          blow(
+            motesRef.current,
+            airShownRef.current,
+            w / 2,
+            h / 2,
+            R,
+            angleRef.current,
+            lit,
+            performance.now(),
+            ag,
+          )
+        } else if (motesRef.current.length) {
+          motesRef.current.length = 0
+          airShownRef.current = 0
+        }
       }
 
       // --- pointer ----------------------------------------------------------
@@ -968,6 +1130,7 @@ export function PitchDisc({
   return (
     <div className="disc-wrap" ref={wrapRef}>
       <div className="disc-glow" ref={glowElRef} aria-hidden="true" />
+      <canvas className="air-canvas" ref={airRef2} aria-hidden="true" />
       <canvas
         ref={canvasRef}
         className="disc-canvas"
