@@ -1076,3 +1076,268 @@ body {
   color: var(--amber);
   opacity: 1;
 }
+
+/* --- ring test ------------------------------------------------------------ */
+
+.ring {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ring-intro h2 {
+  margin: 0 0 8px;
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.ring-intro p {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-dim);
+}
+
+.ring-intro strong {
+  color: var(--brass);
+  font-weight: 600;
+}
+
+.ring-error {
+  color: #e88b6d !important;
+}
+
+.ring-recording,
+.ring-working {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 0;
+  text-align: center;
+}
+
+.ring-working {
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.ring-clock {
+  font-family: var(--serif);
+  font-size: 42px;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+}
+
+.ring-meter {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.ring-meter-fill {
+  height: 100%;
+  transform-origin: left center;
+  transform: scaleX(0);
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffb23c, #ffd689);
+}
+
+.ring-report {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ring-score {
+  text-align: center;
+}
+
+.ring-number {
+  font-family: var(--serif);
+  font-size: clamp(54px, 18vw, 84px);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ring-number.is-good {
+  color: #6fd39b;
+  text-shadow: 0 0 34px rgba(111, 211, 155, 0.35);
+}
+
+.ring-number.is-mid {
+  color: var(--amber);
+  text-shadow: 0 0 30px rgba(255, 178, 60, 0.3);
+}
+
+.ring-number.is-poor {
+  color: #e88b6d;
+}
+
+.ring-verdict {
+  margin-top: 2px;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.ring-blame {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.ring-trace {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ring-trace-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brass-dim);
+}
+
+.ring-timeline {
+  width: 100%;
+  height: 46px;
+  display: block;
+  border-bottom: 1px solid var(--line);
+}
+
+.spectro {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.spectro canvas {
+  display: block;
+  width: 100%;
+  height: 118px;
+}
+
+.spectro-scale {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: rgba(236, 223, 194, 0.55);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
+/* The ladder: the bass's own harmonic series, highest rung at the top. */
+.ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ladder-head {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brass-dim);
+  margin-bottom: 6px;
+}
+
+.rung {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 0;
+  font-size: 11px;
+  color: var(--ink-dim);
+  opacity: 0.45;
+}
+
+.rung.is-shared {
+  opacity: 1;
+}
+
+.rung-n {
+  flex: 0 0 26px;
+  font-variant-numeric: tabular-nums;
+  color: var(--brass-dim);
+}
+
+.rung-hz {
+  flex: 0 0 38px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.rung-bar {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.rung-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.rung-who {
+  flex: 0 0 auto;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rung-state {
+  flex: 0 0 46px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+.ring-parts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 18px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(217, 180, 106, 0.16);
+}
+
+.ring-part {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.ring-part-cents {
+  font-family: var(--serif);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
+
+.ring-part-flag {
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--brass-dim);
+}

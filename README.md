@@ -46,6 +46,27 @@ knows what the chord is *meant* to be, this doesn't have to solve blind
 four-part transcription — it only has to look in the right places, which is both
 tractable and the actual question a director has.
 
+**The ring test.** The thing barbershop actually chases. Sing a chord at it,
+hold it, and it tells you whether the chord *rang* — and if not, who broke it.
+
+Ringing isn't mysticism, it's arithmetic. When every part is a whole-number
+ratio of the bass, all four voices put partials at exactly the same frequencies
+— on the rungs of the bass's own harmonic series — and those partials add
+coherently. Miss the ratio by a few cents and the same partials land a few hertz
+apart instead, and two things a few hertz apart don't add, they beat.
+
+So the report is a **ladder**: the bass's harmonic series, rung by rung, showing
+which voices meet on each one and whether they locked or how many times a second
+they're beating. In a barbershop seventh the lead meets the bass on rung 2, the
+third on rung 5, and the seventh on rung 7 — and that seventh rung is where the
+style lives. Underneath: a score, a trace of how it held up across the take, a
+spectrogram, each part's tuning against the bass, and the recording to play
+back.
+
+Everything is measured against the bass **as you actually sang it**. A chorus
+flat as a whole rings perfectly well; only disagreeing with each other costs
+anything, and the score says so.
+
 **Setlists, shared as a link.** The problem is unglamorous and completely real:
 the director knows the starting pitch for every song in the book, and nobody
 else does. Save each pitch with a song name against it, and the list is there on
@@ -156,6 +177,17 @@ force the built-in microphone instead. And a full chorus is spectrally
 indistinguishable from broadband noise, so breath mode can misfire if it is
 left on mid-song.
 
+Three about the ring test. Beat rates are worked out from the measured
+fundamentals rather than by watching each rung's level wobble, because watching
+the wobble fails on the case that matters most — an equal-tempered seventh is
+about 31 cents out, which at 1.8kHz is 32Hz of beating, and no window short
+enough to see 32Hz is long enough to resolve the partials in the first place.
+That does assume each voice's partials are whole multiples of its own
+fundamental, which for a sustained sung note they are. Heavy vibrato will read
+as a part that wanders, because from the outside it is one. And the recording is
+taken as raw samples rather than through MediaRecorder: every lossy codec works
+by discarding spectral detail, and spectral detail is the entire question here.
+
 Two more about the tuner. Barbershop voicings collide with themselves: the
 lead's octave sits exactly on the bass's second harmonic, and the bari's fifth
 puts its own second harmonic on the bass's third. Each part is therefore
@@ -171,6 +203,9 @@ the readings instead of quietly measuring the app against itself.
 src/
   audio/
     engine.ts     reed synthesis, master chain, hall mode, detent clicks
+    fft.ts        radix-2 FFT, for the analysis the AnalyserNode can't do
+    recorder.ts   raw-sample capture, worklet with a ScriptProcessor fallback
+    ring.ts       the ring test — harmonic ladder, beat rates, scoring
     mic.ts        opening a capture track, and the platform quirks in doing so
     breath.ts     microphone gate — energy + spectral flatness
     analyzer.ts   pitch detection (autocorrelation) and per-part chord tuning
@@ -179,7 +214,8 @@ src/
     setlist.ts    saved pitches, and packing a list into a URL
   ui/
     PitchDisc.tsx the brass disc (canvas)
-    TuneView.tsx  the tuner — one voice, and the whole chord
+    TuneView.tsx  the tuner — one voice, the whole chord, the ring test
+    RingView.tsx  recording, and the report afterwards
     SetlistSheet.tsx, ControlTray.tsx, BreathMeter.tsx, SettingsSheet.tsx
   hooks/          wake lock, persisted preferences
 ```
@@ -197,7 +233,7 @@ Everything runs client-side. No backend, no accounts, no analytics.
 | Space | sound it (desktop) |
 | ← / → | previous / next note |
 | List icon, top right | the setlist |
-| Tuning fork, top right | the tuner |
+| Tuning fork, top right | the tuner and the ring test |
 
 ## Not built yet
 

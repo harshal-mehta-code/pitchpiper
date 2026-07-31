@@ -15,6 +15,7 @@ import {
   type BreathStatus,
 } from './audio/breath'
 import { listAudioInputs } from './audio/mic'
+import { nearestRatio, type RingTarget } from './audio/ring'
 import {
   ensureAudio,
   getAnalyser,
@@ -32,6 +33,7 @@ import {
   noteLabel,
   PIPE_NOTES,
   STACK_ID,
+  VOICE_PARTS,
   type ChordTone,
 } from './music/notes'
 
@@ -616,6 +618,34 @@ export default function App() {
     () => tonesFor({ noteIndex, chordId, octaveShift, a4, stack, useFlats, justTuning }),
     [noteIndex, chordId, octaveShift, a4, stack, useFlats, justTuning],
   )
+  /**
+   * What the ring test listens for: the chord's *ideal* ratios, always the just
+   * ones even when the pipe is sounding equal temperament. Only a just chord
+   * can ring, so those ratios are the yardstick either way — measuring an
+   * equal-tempered take against them is how the 31 cents shows up.
+   *
+   * A stack has no chord to look up, so each note is matched to the simplest
+   * fraction near its actual ratio against the lowest note. Two notes still
+   * share partials whenever their ratio is near a simple one; that is all a
+   * chord ever was.
+   */
+  const ringTargets = useMemo<RingTarget[]>(() => {
+    if (isStack) {
+      if (tones.length < 2) return []
+      const root = tones[0].freq
+      return tones.map((t) => {
+        const [num, den] = nearestRatio(t.freq / root)
+        return { part: t.part, num, den }
+      })
+    }
+    if (chord.id === 'unison') return []
+    return VOICE_PARTS.map((p) => ({
+      part: p,
+      num: chord.just[p][0],
+      den: chord.just[p][1],
+    }))
+  }, [chord, isStack, tones])
+
   const centerSub = isStack
     ? stack.length
       ? `Stack · ${stack.length}`
@@ -684,6 +714,7 @@ export default function App() {
             a4={a4}
             useFlats={useFlats}
             micDeviceId={micDeviceId}
+            ringTargets={ringTargets}
             mode={tuneMode}
             onMode={setTuneMode}
             onReferenceDown={onHubDown}
@@ -749,7 +780,7 @@ export default function App() {
         // In the tuner the same picker chooses what is listened for and what
         // the reference button gives you — which of those it is depends on
         // which half of the tuner is up.
-        label={tuning ? (tuneMode === 'chord' ? 'Listening for' : 'Reference') : 'Chord'}
+        label={tuning ? (tuneMode === 'voice' ? 'Reference' : 'Listening for') : 'Chord'}
       />
 
       <SetlistSheet

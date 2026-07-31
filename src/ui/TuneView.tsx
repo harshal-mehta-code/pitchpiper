@@ -7,6 +7,8 @@ import {
   type VoiceReading,
 } from '../audio/analyzer'
 import { getAudio } from '../audio/engine'
+import { RingView } from './RingView'
+import type { RingTarget } from '../audio/ring'
 import { midiToLabel, ratioLabel, type ChordTone } from '../music/notes'
 
 /**
@@ -25,7 +27,7 @@ import { midiToLabel, ratioLabel, type ChordTone } from '../music/notes'
 
 const CENTS_RANGE = 50
 
-export type TuneMode = 'voice' | 'chord'
+export type TuneMode = 'voice' | 'chord' | 'ring'
 
 export interface TuneViewProps {
   /** What the pipe is currently set to — the chord mode's targets. */
@@ -34,6 +36,8 @@ export interface TuneViewProps {
   a4: number
   useFlats: boolean
   micDeviceId: string | null
+  /** The chord's ideal just ratios, for the ring test. */
+  ringTargets: RingTarget[]
   /** Lifted, because the tray outside this view changes with it. */
   mode: TuneMode
   onMode: (m: TuneMode) => void
@@ -69,7 +73,12 @@ export function TuneView(props: TuneViewProps) {
   // Started from a layout effect rather than a passive one so the call still
   // sits inside the tap that opened this view — Safari only allows the
   // microphone prompt while a user gesture is live.
+  //
+  // The ring test does its own recording and needs the microphone to itself, so
+  // the live analyser stands down entirely while that mode is up rather than
+  // both of them holding a capture track.
   useLayoutEffect(() => {
+    if (mode === 'ring') return
     const analyzer = new PitchAnalyzer(
       (r) => {
         voiceRef.current = r
@@ -95,10 +104,10 @@ export function TuneView(props: TuneViewProps) {
       analyzer.stop()
       analyzerRef.current = null
     }
-    // Deliberately mount-only. Changing the microphone or concert pitch is
-    // handled below without tearing the stream down and re-prompting.
+    // Only the ring mode matters here. Changing the microphone or concert
+    // pitch is handled below, without tearing the stream down and re-prompting.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [mode === 'ring'])
 
   useEffect(() => {
     const a = analyzerRef.current
@@ -155,18 +164,31 @@ export function TuneView(props: TuneViewProps) {
           onClick={() => setMode('voice')}
           aria-pressed={mode === 'voice'}
         >
-          One voice
+          Voice
         </button>
         <button
           className={`seg${mode === 'chord' ? ' is-on' : ''}`}
           onClick={() => setMode('chord')}
           aria-pressed={mode === 'chord'}
         >
-          Whole chord
+          Chord
+        </button>
+        <button
+          className={`seg${mode === 'ring' ? ' is-on' : ''}`}
+          onClick={() => setMode('ring')}
+          aria-pressed={mode === 'ring'}
+        >
+          Ring
         </button>
       </div>
 
-      {bad ? (
+      {mode === 'ring' ? (
+        <RingView
+          targets={props.ringTargets}
+          chordLabel={props.chordLabel}
+          micDeviceId={props.micDeviceId}
+        />
+      ) : bad ? (
         <div className="tune-blocked">
           <p>{STATUS_TEXT[status]}</p>
           {detail && <p className="hint">{detail}</p>}
@@ -189,13 +211,17 @@ export function TuneView(props: TuneViewProps) {
         />
       )}
 
-      <button
-        className={`reference${sounding ? ' is-on' : ''}`}
-        onClick={toggleReference}
-        aria-pressed={sounding}
-      >
-        {sounding ? 'Sounding — tap to stop and listen' : 'Sound it'}
-      </button>
+      {/* The ring test brings its own controls, and a reference tone playing
+          into a recording would be one more voice in the chord. */}
+      {mode !== 'ring' && (
+        <button
+          className={`reference${sounding ? ' is-on' : ''}`}
+          onClick={toggleReference}
+          aria-pressed={sounding}
+        >
+          {sounding ? 'Sounding — tap to stop and listen' : 'Sound it'}
+        </button>
+      )}
     </div>
   )
 }
