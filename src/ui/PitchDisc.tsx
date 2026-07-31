@@ -29,6 +29,19 @@ const DISC_FILL = 0.88
 /** How long the ripple under a tapped hole lasts. */
 const PULSE_MS = 480
 
+/**
+ * A press shorter than this is a tap, and a tap latches the note on.
+ *
+ * Generous on purpose: someone reaching for a quick reference pitch and holding
+ * it for a fifth of a second meant to tap, and getting a note that stops the
+ * instant their thumb lifts would feel broken. Anything longer is plainly a
+ * hold and behaves like one.
+ */
+const TAP_MS = 260
+
+/** How many air streaks can be in flight at full blow. */
+const MAX_MOTES = 90
+
 export interface PitchDiscProps {
   noteIndex: number
   onNoteIndexChange: (index: number) => void
@@ -39,7 +52,22 @@ export interface PitchDiscProps {
   glowRef: RefObject<number>
   hubActive: boolean
   onHubDown: () => void
-  onHubUp: () => void
+  /**
+   * `quick` is true when the press was short enough to read as a tap rather
+   * than a hold. The middle of the pipe is the one place that makes sound, and
+   * it does both jobs: hold it for as long as you want the note, or tap it and
+   * leave it running. Which one happened is a question about the gesture, so it
+   * is answered here rather than inferred upstairs.
+   */
+  onHubUp: (quick: boolean) => void
+  /** The note is latched on. Drawn as a standing ring around the hub. */
+  latched?: boolean
+  /**
+   * 0..1 breath pressure, or null when nothing is listening. Drives the air
+   * streaming over the pipe — read every frame, never re-renders.
+   */
+  airRef?: RefObject<number>
+  breathOn?: boolean
   /**
    * Stack mode. Semitone offsets from the bottom hole, so 0..12 is a hole as
    * engraved and 13..24 is the same hole an octave up. Tapping a hole cycles it
@@ -236,6 +264,95 @@ function renderDiscFace(size: number, labels: string[]): HTMLCanvasElement {
 }
 
 // ---------------------------------------------------------------------------
+// Air
+// ---------------------------------------------------------------------------
+
+interface Mote {
+  x: number
+  y: number
+  vx: number
+  vy: number
+  /** 1 at birth, 0 at death. */
+  life: number
+  decay: number
+  weight: number
+}
+
+/**
+ * One frame of air.
+ *
+ * Streaks enter from the bottom of the screen — where you are blowing — and
+ * rush upward past the pipe. Near the disc they are pushed outward along the
+ * radius, which for the cost of one divide reads convincingly as air spilling
+ * around something solid rather than through it.
+ *
+ * `air` is 0..1 breath pressure. It drives all three of the things an eye
+ * actually reads as wind: how many streaks there are, how fast they go, and how
+ * brightly they show up.
+ */
+function blow(motes: Mote[], air: number, half: number, R: number, g: CanvasRenderingContext2D) {
+  const speed = (0.55 + 2.7 * air) * R * 0.012
+
+  let spawn = 0.15 + 2 * air
+  while (spawn > 0 && motes.length < MAX_MOTES) {
+    if (spawn < 1 && Math.random() > spawn) break
+    spawn -= 1
+    motes.push({
+      x: (Math.random() * 2 - 1) * half,
+      y: half * (1 + Math.random() * 0.25),
+      vx: (Math.random() * 2 - 1) * speed * 0.18,
+      vy: -speed * (0.75 + Math.random() * 0.5),
+      life: 1,
+      decay: 0.004 + Math.random() * 0.004,
+      weight: 0.5 + Math.random() * 0.9,
+    })
+  }
+
+  g.save()
+  // Additive, so streaks crossing each other brighten instead of muddying, and
+  // so they read as light rather than as paint on the metal.
+  g.globalCompositeOperation = 'lighter'
+  g.lineCap = 'round'
+
+  for (let i = motes.length - 1; i >= 0; i--) {
+    const m = motes[i]
+    const d = Math.hypot(m.x, m.y) || 1
+    // Falls off with the square of distance, so it is decisive right at the rim
+    // and negligible out at the corners.
+    // Tuned so most of the stream spills round the rim but some of it carries
+    // over the top, which is what air does and what a wall of it does not.
+    const push = Math.min(speed * 0.45, ((R * 0.62) / d) ** 2 * speed * 0.055)
+    m.vx += (m.x / d) * push
+    m.vy += (m.y / d) * push
+    m.vx *= 0.99
+    m.vy *= 0.99
+    m.x += m.vx
+    m.y += m.vy
+    m.life -= m.decay
+
+    if (m.life <= 0 || m.y < -half * 1.3) {
+      motes.splice(i, 1)
+      continue
+    }
+
+    // Fade in and out at the edges of the canvas, so nothing pops into being at
+    // a boundary the eye would otherwise never notice.
+    const edge = Math.min(1, ((half * 1.25 - Math.abs(m.y)) / (half * 0.45)) ** 2)
+    const alpha = (0.07 + 0.42 * air) * Math.min(1, m.life * 3) * edge
+    if (alpha <= 0.004) continue
+
+    g.beginPath()
+    g.moveTo(m.x - m.vx * 4.5, m.y - m.vy * 4.5)
+    g.lineTo(m.x, m.y)
+    g.lineWidth = m.weight * (0.7 + 1.1 * air) * (R * 0.0055)
+    g.strokeStyle = `rgba(255, 233, 190, ${alpha})`
+    g.stroke()
+  }
+
+  g.restore()
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -249,12 +366,24 @@ export function PitchDisc({
   hubActive,
   onHubDown,
   onHubUp,
+  latched,
+  airRef,
+  breathOn,
   stack,
   stackMode,
   onToggleStack,
 }: PitchDiscProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
+  /**
+   * The amber pool the disc sits in.
+   *
+   * A DOM layer rather than a gradient painted into the canvas: the canvas has
+   * edges, and a halo that reaches them stops dead at a rectangle nobody knew
+   * was there. Out here it can spill as far past the instrument as it likes and
+   * fade to nothing on its own terms.
+   */
+  const glowElRef = useRef<HTMLDivElement>(null)
 
   const faceRef = useRef<HTMLCanvasElement | null>(null)
   const sizeRef = useRef(0)
@@ -286,6 +415,24 @@ export function PitchDisc({
    * the place your thumb actually touched.
    */
   const pulsesRef = useRef<{ index: number; t: number }[]>([])
+
+  const latchedRef = useRef(false)
+  latchedRef.current = latched ?? false
+  const breathOnRef = useRef(false)
+  breathOnRef.current = breathOn ?? false
+
+  /**
+   * Air over the pipe.
+   *
+   * Blowing at a phone gives you no feedback at all — you cannot hear yourself
+   * over the speaker and there is nothing on screen that moves with the breath.
+   * These streaks are that missing half: they rush faster, brighter and thicker
+   * the harder you blow, and they idle to a drift when the microphone is open
+   * but nothing is happening, which doubles as "it is listening".
+   */
+  const motesRef = useRef<Mote[]>([])
+  /** Smoothed pressure. Rises fast, falls slowly, so a puff leaves a wake. */
+  const airShownRef = useRef(0)
 
   hubActiveRef.current = hubActive
   centerRef.current = { label: centerLabel, sub: centerSub }
@@ -445,16 +592,9 @@ export function PitchDisc({
       g.fillStyle = shadow
       g.fillRect(-px / 2, -px / 2, px, px)
 
-      // Amber pool underneath the metal, so the disc looks lit rather than
-      // painted when it sounds.
-      if (glow > 0.001) {
-        const halo = g.createRadialGradient(0, 0, R * 0.2, 0, 0, R * 1.42)
-        halo.addColorStop(0, `rgba(255, 178, 60, ${0.4 * glow})`)
-        halo.addColorStop(0.5, `rgba(255, 150, 40, ${0.15 * glow})`)
-        halo.addColorStop(1, 'rgba(255, 140, 30, 0)')
-        g.fillStyle = halo
-        g.fillRect(-px / 2, -px / 2, px, px)
-      }
+      // The amber pool is a DOM layer behind the canvas — see glowElRef. All we
+      // do here is tell it how bright to be.
+      if (glowElRef.current) glowElRef.current.style.opacity = glow.toFixed(3)
 
       g.save()
       g.rotate(angleRef.current)
@@ -542,6 +682,21 @@ export function PitchDisc({
       }
       g.restore()
 
+      // --- air ---------------------------------------------------------------
+      // Over the metal, under the pointer and the note in the middle: those two
+      // are what you read, and nothing should blow across them.
+      if (breathOnRef.current) {
+        const want = Math.max(0, Math.min(1, airRef?.current ?? 0))
+        const a = airShownRef.current
+        // Rises with the breath and falls well behind it, so a puff leaves a
+        // wake instead of snapping off the moment the gate shuts.
+        airShownRef.current = a + (want - a) * (want > a ? 0.35 : 0.045)
+        blow(motesRef.current, airShownRef.current, px / 2, R, g)
+      } else if (motesRef.current.length) {
+        motesRef.current.length = 0
+        airShownRef.current = 0
+      }
+
       // --- pointer ----------------------------------------------------------
       // Fixed at twelve o'clock while the disc turns underneath it. This is
       // the thing that makes the object legible: the note it's biting into is
@@ -606,6 +761,17 @@ export function PitchDisc({
         g.arc(0, 0, hubR - 2 * dpr, 0, Math.PI * 2)
         g.lineWidth = 1.6 * dpr
         g.strokeStyle = 'rgba(255, 205, 130, 0.5)'
+        g.stroke()
+      }
+      // A latched note has nothing holding it down, so it says so: a standing
+      // ring that breathes, which is the difference between "this is on" and
+      // "you are pressing this".
+      if (latchedRef.current) {
+        const beat = 0.55 + 0.25 * Math.sin(performance.now() / 620)
+        g.beginPath()
+        g.arc(0, 0, hubR - 4 * dpr, 0, Math.PI * 2)
+        g.lineWidth = 2.2 * dpr
+        g.strokeStyle = `rgba(255, 196, 110, ${beat})`
         g.stroke()
       }
 
@@ -708,13 +874,16 @@ export function PitchDisc({
   )
 
   const endPointer = useCallback(
-    (e: React.PointerEvent) => {
+    (e: React.PointerEvent, cancelled = false) => {
       const p = pointerRef.current
       if (p.id !== e.pointerId) return
       pointerRef.current = { ...p, id: -1 }
 
       if (p.onHub) {
-        onHubUp()
+        // A cancelled gesture is one the browser took away — a notification
+        // pulling focus, a palm on the screen. Latching a note off the back of
+        // that would be a note nobody asked for.
+        onHubUp(!cancelled && performance.now() - p.t < TAP_MS && p.moved < 0.15)
         return
       }
 
@@ -747,13 +916,14 @@ export function PitchDisc({
 
   return (
     <div className="disc-wrap" ref={wrapRef}>
+      <div className="disc-glow" ref={glowElRef} aria-hidden="true" />
       <canvas
         ref={canvasRef}
         className="disc-canvas"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={endPointer}
-        onPointerCancel={endPointer}
+        onPointerUp={(e) => endPointer(e)}
+        onPointerCancel={(e) => endPointer(e, true)}
         role="slider"
         tabIndex={0}
         aria-label={

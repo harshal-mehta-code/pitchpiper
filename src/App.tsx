@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { PitchDisc } from './ui/PitchDisc'
-import { ControlTray, type PlayMode } from './ui/ControlTray'
+import { ControlTray, type PitchMode } from './ui/ControlTray'
 import { BreathMeter } from './ui/BreathMeter'
 import { SettingsSheet } from './ui/SettingsSheet'
 import { TuneView, type TuneMode } from './ui/TuneView'
@@ -74,6 +74,8 @@ const PUFF_SUSTAIN_MIN_MS = 1600
 const PUFF_SUSTAIN_MAX_MS = 3100
 /** Breathing room after a note before we re-open the microphone. */
 const REARM_DELAY_MS = 220
+/** A press shorter than this is a tap, and a tap latches. Matches the disc. */
+const TAP_MS = 260
 
 interface SoundParams {
   noteIndex: number
@@ -192,6 +194,11 @@ export default function App() {
   droneRef.current = drone
   /** Breath mode is toggled from further down the file than its callers. */
   const handleBreathModeRef = useRef<(on: boolean) => void>(() => {})
+  /** True between pointer-down and pointer-up on the middle of the pipe. */
+  const hubHeldRef = useRef(false)
+  /** 0..1 breath pressure for the air over the pipe. Read at 60fps. */
+  const airRef = useRef(0)
+  const spaceAtRef = useRef(0)
   const puffTimersRef = useRef<{ end?: number; rearm?: number }>({})
   /** Whether breath mode was on when the tuner took the microphone away. */
   const breathWasOnRef = useRef(false)
@@ -239,48 +246,79 @@ export default function App() {
     detectorRef.current?.resume(getAudio())
   }, [])
 
+  /**
+   * Latch the pitch on, or let it go.
+   *
+   * A latched note keeps the microphone paused for as long as it sounds. The
+   * detector would otherwise spend the whole time listening to our own reed
+   * through the speaker and retriggering on it, and "why does it keep playing
+   * by itself" is not a question anyone should have to answer.
+   */
+  const setLatched = useCallback(
+    (on: boolean) => {
+      setDrone(on)
+      droneRef.current = on
+      if (!on) {
+        stopSound()
+        rearmBreath()
+        return
+      }
+      detectorRef.current?.pause()
+      if (soundModeRef.current) {
+        // Already sounding, from the press that latched it. Promote the note in
+        // place rather than releasing and restarting it, which would click.
+        soundModeRef.current = 'drone'
+        return
+      }
+      void prepareAudio().then(() => {
+        if (droneRef.current) startSound('drone')
+      })
+    },
+    [prepareAudio, rearmBreath, startSound, stopSound],
+  )
+
   const onHubDown = useCallback(() => {
+    hubHeldRef.current = true
     setHubActive(true)
     // A thumb on the hub takes over from a ringing puff.
     clearPuffTimers()
     setPuffSounding(false)
-    void prepareAudio().then(() => startSound('hold'))
+    void prepareAudio().then(() => {
+      // On the very first touch of the session the context unlock is genuinely
+      // asynchronous, and the thumb can be gone before it resolves. Without
+      // this the note starts after the release and never stops.
+      if (hubHeldRef.current) startSound('hold')
+    })
   }, [clearPuffTimers, prepareAudio, startSound])
 
-  const onHubUp = useCallback(() => {
-    setHubActive(false)
-    // Letting go re-articulates the drone rather than killing it: while it is
-    // latched, the only thing that stops the sound is the latch.
-    if (soundModeRef.current !== 'hold') return
-    if (droneRef.current) {
-      startSound('drone')
-      return
-    }
-    stopSound()
-    rearmBreath()
-  }, [rearmBreath, startSound, stopSound])
-
   /**
-   * Latch the pitch on.
+   * The middle of the pipe does both jobs.
    *
-   * Sustained tuning work — matching a vowel, finding a chord by ear, holding a
-   * reference while a section works something out — wants a drone, and a thumb
-   * held on the hub for two minutes is not that. Mutually exclusive with breath
-   * input, which would otherwise be listening to the drone.
+   * Hold it and you get the note for as long as you hold it; tap it and the
+   * note stays on until you tap it again. Two behaviours, one place — which is
+   * the whole point. Sounding it and keeping it sounding used to live on
+   * opposite sides of the screen, with nothing on either of them saying they
+   * were the same idea.
    */
-  const toggleDrone = useCallback(
-    (on: boolean) => {
-      setDrone(on)
-      if (on) {
-        if (breathOnRef.current) handleBreathModeRef.current(false)
-        void prepareAudio().then(() => {
-          if (droneRef.current) startSound('drone')
-        })
-      } else if (soundModeRef.current === 'drone') {
-        stopSound()
+  const onHubUp = useCallback(
+    (quick: boolean) => {
+      if (!hubHeldRef.current) return
+      hubHeldRef.current = false
+      setHubActive(false)
+      if (quick) {
+        setLatched(!droneRef.current)
+        return
       }
+      // A hold that ends while latched leaves the latch alone — it was on
+      // before the thumb arrived, so re-articulating is the right answer.
+      if (droneRef.current) {
+        startSound('drone')
+        return
+      }
+      stopSound()
+      rearmBreath()
     },
-    [prepareAudio, startSound, stopSound],
+    [rearmBreath, setLatched, startSound, stopSound],
   )
 
   // Re-voice a sounding note when the pitch under it changes, so spinning the
@@ -379,6 +417,9 @@ export default function App() {
     detectorRef.current?.pause()
     setPuffSounding(true)
     startSound('puff', strength)
+    // The microphone is deaf from here, so no further frames will arrive to
+    // wind the air back down. Cut it and let the disc's own decay draw the wake.
+    airRef.current = 0
 
     const sustain =
       PUFF_SUSTAIN_MIN_MS + (PUFF_SUSTAIN_MAX_MS - PUFF_SUSTAIN_MIN_MS) * strength
@@ -395,6 +436,7 @@ export default function App() {
   const handleBreathFrame = useCallback(
     (f: BreathFrame) => {
       breathFrameRef.current = f
+      airRef.current = f.pressure
       // A held note wins. If a thumb is on the hub, the mic stays out of it.
       if (soundModeRef.current === 'hold') return
 
@@ -451,9 +493,12 @@ export default function App() {
       breathOnRef.current = on
       const det = getDetector()
       if (on) {
-        // A drone into an open microphone is the detector listening to us.
+        // A latched note into an open microphone is the detector listening to
+        // us. Dropped here rather than paused, because the caller is about to
+        // open a fresh capture track either way.
         if (droneRef.current) {
           setDrone(false)
+          droneRef.current = false
           if (soundModeRef.current === 'drone') stopSound()
         }
         // Deliberately synchronous up to the getUserMedia call. Safari only
@@ -470,6 +515,7 @@ export default function App() {
       } else {
         clearPuffTimers()
         setPuffSounding(false)
+        airRef.current = 0
         det.stop()
         if (soundModeRef.current === 'breath' || soundModeRef.current === 'puff') {
           stopSound()
@@ -481,30 +527,28 @@ export default function App() {
   handleBreathModeRef.current = handleBreathMode
 
   /**
-   * One control for the three ways the pipe can be played.
+   * What the pipe gives you: one note, a chord, or a set you built yourself.
    *
-   * Breath and drone were separate toggles that quietly switched each other off.
-   * The behaviour was right and completely invisible; stating it as three
-   * exclusive choices costs nothing and explains itself. Everything here stays
-   * synchronous, because Safari only allows the microphone prompt while the tap
-   * that asked for it is still live.
+   * Three genuinely different things, kept apart. They used to sit in one row
+   * with the chord types — "single note" listed as though it were a kind of
+   * chord, a custom stack as though it were another — which was both wrong and
+   * a row with nowhere to grow. The chord *types* now live one level down,
+   * where any number of them can be added without touching this.
+   *
+   * chordId stays the single source of truth so nothing saved to a setlist or
+   * a browser needs migrating; the two tiers are derived from it.
    */
-  const playMode: PlayMode = breathMode ? 'breath' : drone ? 'drone' : 'touch'
-  const setPlayMode = useCallback(
-    (m: PlayMode) => {
-      if (m === 'breath') {
-        handleBreathMode(true)
-        return
-      }
-      // The drone latch already stands breath down on its own way up.
-      if (m === 'drone') {
-        toggleDrone(true)
-        return
-      }
-      if (breathOnRef.current) handleBreathMode(false)
-      toggleDrone(false)
+  const pitchMode: PitchMode =
+    chordId === 'unison' ? 'note' : chordId === STACK_ID ? 'custom' : 'chord'
+  /** The chord type to come back to when Chord is picked again. */
+  const lastChordRef = useRef(pitchMode === 'chord' ? chordId : 'dom7')
+  if (pitchMode === 'chord') lastChordRef.current = chordId
+
+  const setPitchMode = useCallback(
+    (m: PitchMode) => {
+      setChordId(m === 'note' ? 'unison' : m === 'custom' ? STACK_ID : lastChordRef.current)
     },
-    [handleBreathMode, toggleDrone],
+    [setChordId],
   )
 
   /** Switching input device means tearing the stream down and asking again. */
@@ -565,9 +609,10 @@ export default function App() {
     getAudio()
     breathWasOnRef.current = breathMode
     if (breathMode) handleBreathMode(false)
-    // The tuner has its own latch, so the pipe's drone stands down rather than
+    // The tuner has its own latch, so the pipe's stands down rather than
     // leaving two things that both claim to be sounding the reference.
     setDrone(false)
+    droneRef.current = false
     stopSound()
     setView('tune')
   }, [breathMode, handleBreathMode, stopSound, view])
@@ -616,6 +661,7 @@ export default function App() {
 
       if (e.code === 'Space') {
         e.preventDefault()
+        spaceAtRef.current = performance.now()
         onHubDown()
       } else if (view !== 'pipe') {
         return
@@ -628,7 +674,9 @@ export default function App() {
       }
     }
     const up = (e: KeyboardEvent) => {
-      if (e.code === 'Space') onHubUp()
+      // Same bargain as the thumb: a stab at the space bar latches, holding it
+      // sounds for as long as it is down.
+      if (e.code === 'Space') onHubUp(performance.now() - spaceAtRef.current < TAP_MS)
     }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
@@ -695,13 +743,17 @@ export default function App() {
     [stack],
   )
 
-  const centerSub = isStack
-    ? stack.length
-      ? `${stack.length} note${stack.length > 1 ? 's' : ''}`
-      : 'Tap the holes'
-    : chord.id === 'unison'
-      ? `${Math.round(tones[0].freq * 10) / 10} Hz`
-      : chord.label
+  // While a note is latched the caption stops describing the chord and answers
+  // the only question anyone has at that moment, which is how to stop it.
+  const centerSub = drone
+    ? 'Tap to stop'
+    : isStack
+      ? stack.length
+        ? `${stack.length} note${stack.length > 1 ? 's' : ''}`
+        : 'Tap the holes'
+      : chord.id === 'unison'
+        ? `${Math.round(tones[0].freq * 10) / 10} Hz`
+        : chord.label
   const chordLabel = isStack
     ? stack.length
       ? `Custom stack · ${stack.length} notes`
@@ -715,15 +767,28 @@ export default function App() {
     [setNoteIndex],
   )
 
-  const hint = isStack
-    ? 'Tap a hole: add → up an octave → off'
-    : drone
-      ? 'Droning — tap Touch to stop. Spin the ring to move it.'
-      : !breathMode
-        ? 'Hold the middle. Spin the ring to change note.'
-        : breathResponse === 'puff'
-          ? 'One puff at the bottom of your phone — or hold the middle'
-          : 'Blow at your phone — or hold the middle'
+  /**
+   * Step the root note without the disc.
+   *
+   * The tuner has no pipe on it, so setting what to listen for used to mean
+   * going back to the other screen, changing it there, and coming back — the
+   * app telling you to go somewhere else instead of just letting you do it.
+   */
+  const stepNote = useCallback(
+    (delta: number) =>
+      setNoteIndex((i) => Math.max(0, Math.min(PIPE_NOTES.length - 1, i + delta))),
+    [setNoteIndex],
+  )
+
+  const hint = drone
+    ? 'Left running — tap the middle again to stop'
+    : isStack
+      ? 'Tap a hole: add → up an octave → off'
+      : breathMode
+        ? breathResponse === 'puff'
+          ? 'One puff at the bottom of your phone — or use the middle'
+          : 'Blow at your phone — or use the middle'
+        : 'Hold the middle for the note · tap it to leave it on'
 
   const tuning = view === 'tune'
 
@@ -782,10 +847,14 @@ export default function App() {
             useFlats={useFlats}
             micDeviceId={micDeviceId}
             ringTargets={ringTargets}
+            isCustom={isStack}
             mode={tuneMode}
             onMode={setTuneMode}
             onReferenceDown={onHubDown}
-            onReferenceUp={onHubUp}
+            // The tuner's reference is its own latch, so it never wants the
+            // hub's tap-to-latch behaviour — always a plain stop.
+            onReferenceUp={() => onHubUp(false)}
+            onGoToPipe={() => setView('pipe')}
           />
         </main>
       ) : (
@@ -800,6 +869,9 @@ export default function App() {
             hubActive={hubActive}
             onHubDown={onHubDown}
             onHubUp={onHubUp}
+            latched={drone}
+            airRef={airRef}
+            breathOn={breathMode}
             stack={isStack ? stack : undefined}
             stackMode={isStack}
             onToggleStack={toggleStack}
@@ -852,10 +924,12 @@ export default function App() {
       )}
 
       <ControlTray
+        pitchMode={pitchMode}
+        onPitchMode={setPitchMode}
         chordId={chordId}
         onChordId={setChordId}
-        playMode={playMode}
-        onPlayMode={setPlayMode}
+        breathMode={breathMode}
+        onBreathMode={handleBreathMode}
         octaveShift={octaveShift}
         onOctaveShift={setOctaveShift}
         hallMode={hallMode}
@@ -863,10 +937,12 @@ export default function App() {
         a4={a4}
         onOpenSettings={() => setSettingsOpen(true)}
         compact={tuning}
+        noteLabel={centerLabel}
+        onNoteStep={stepNote}
         // In the tuner the same picker chooses what is listened for and what
         // the reference button gives you — which of those it is depends on
         // which half of the tuner is up.
-        label={tuning ? (tuneMode === 'voice' ? 'Reference' : 'Listening for') : 'Chord'}
+        label={tuning ? (tuneMode === 'voice' ? 'Reference' : 'Listening for') : 'Give'}
       />
 
       <SetlistSheet

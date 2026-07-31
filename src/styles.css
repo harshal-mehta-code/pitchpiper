@@ -240,6 +240,7 @@ body {
 /* Sized by aspect ratio rather than flex-grow so the caption sits just under
    the disc instead of being shoved to the bottom of the stage. */
 .disc-wrap {
+  position: relative;
   flex: 0 1 auto;
   min-height: 0;
   width: min(96vw, 520px);
@@ -249,6 +250,40 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* The amber pool the lit pipe sits in.
+ *
+ * Out here rather than painted into the canvas, because the canvas has edges: a
+ * halo wide enough to look like light reached them and stopped dead, drawing a
+ * hard rectangle around an instrument that is supposed to be round. Nothing on
+ * the way up to .stage clips, so this fades out on its own terms.
+ *
+ * `closest-side` makes 100% mean half this element's width, which puts the
+ * disc's own rim at 44% — hence the stops. */
+.disc-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 210%;
+  height: 210%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0;
+  z-index: 0;
+  background: radial-gradient(
+    closest-side circle at 50% 50%,
+    rgba(var(--amber-rgb), 0.42) 0%,
+    rgba(var(--amber-rgb), 0.3) 22%,
+    rgba(255, 150, 40, 0.14) 44%,
+    rgba(255, 140, 30, 0.04) 64%,
+    rgba(255, 140, 30, 0) 88%
+  );
+}
+
+.disc-canvas {
+  position: relative;
+  z-index: 1;
 }
 
 .disc-canvas {
@@ -644,6 +679,15 @@ body {
   background: rgba(var(--amber-rgb), 0.12);
 }
 
+/* A full-width button that looks pressable but isn't is worse than no button.
+   Recording is only disabled while there is nothing to sing at, and the thing
+   that fixes that sits directly above it. */
+.reference:disabled {
+  opacity: 0.3;
+  cursor: default;
+  border-style: dashed;
+}
+
 /* --- breath meter --------------------------------------------------------- */
 
 .breath-meter {
@@ -799,14 +843,53 @@ body {
   stroke: none;
 }
 
-/* Icon and word together: these three are modes, and a mode you can only
-   identify by its icon is a mode nobody turns on. */
-.seg-mode {
-  min-width: 0;
-  padding: 7px 12px;
+/* Note / Chord / Custom. Words, not musical glyphs, so the sans face. */
+.seg-kind {
+  min-width: 66px;
+  padding: 8px 14px;
   font-family: var(--sans);
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 0.02em;
+}
+
+/* The chord types, one level below the thing they are types of — so they are
+   deliberately quieter than the segmented control above them, and they wrap
+   rather than scroll. A row that hides its own contents is a row nobody knows
+   the length of, and this one is meant to be able to grow. */
+.chord-types {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+  max-width: min(100%, 440px);
+}
+
+.chord-type {
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--serif);
+  font-size: 13.5px;
+  cursor: pointer;
+  transition:
+    color var(--t),
+    border-color var(--t),
+    background var(--t),
+    transform var(--t-fast) var(--ease);
+}
+
+.chord-type.is-on {
+  color: var(--amber);
+  border-color: var(--line-lit);
+  background: var(--wash-lit);
+}
+
+@media (hover: hover) {
+  .chord-type:not(.is-on):hover {
+    color: var(--ink);
+  }
 }
 
 @media (hover: hover) {
@@ -932,6 +1015,55 @@ body {
   font-variant-numeric: tabular-nums;
   color: var(--ink);
   font-size: 12.5px;
+}
+
+/* The root note, steppable from inside the tuner where there is no disc. */
+.stepper-note {
+  min-width: 30px;
+  font-family: var(--serif);
+  font-size: 16px;
+  color: var(--brass);
+}
+
+/* Nothing to listen for yet. Points at the control that fixes it — which is
+   directly below — rather than describing a trip to another screen. */
+.needs-chord {
+  text-align: center;
+  margin-top: 10px;
+}
+
+.needs-chord .hint {
+  opacity: 1;
+}
+
+.needs-chord strong {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.needs-chord-arrow {
+  margin-top: 2px;
+  font-size: 17px;
+  color: var(--amber);
+  opacity: 0.75;
+  animation: nudge 1.9s var(--ease) infinite;
+}
+
+@keyframes nudge {
+  0%,
+  62%,
+  100% {
+    transform: translateY(0);
+  }
+  78% {
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .needs-chord-arrow {
+    animation: none;
+  }
 }
 
 /* --- settings sheet ------------------------------------------------------- */

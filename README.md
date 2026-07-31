@@ -15,6 +15,14 @@ phone.
 turns with real momentum, clicking and buzzing into each detent, coasting to a
 stop and settling onto a note. Tap any engraved note to jump straight there.
 
+**The middle sounds it, and does both jobs.** Hold it and you get the note for
+as long as you hold it. Tap it and the note stays on until you tap again — the
+middle then reads *tap to stop*, so the question "how do I turn this off"
+answers itself in the place it came up. Sounding a note and leaving one running
+used to be two controls on opposite sides of the screen with nothing on either
+saying they were related; they are one gesture with two lengths, which is how a
+walkie-talkie, a torch and a car horn all already work.
+
 **The sound.** Not a sine wave. A modelled free reed: a breathy chiff on the
 attack, an upward pitch bend as air pressure builds, two reeds beating a few
 cents apart, a bed of air noise, and a flat sag as the breath dies. It sounds
@@ -32,14 +40,16 @@ a gap shorter than that hang sounds like a reed coasting instead of a switch
 being flicked. How long it hangs is yours to set, from **Crisp** to **Legato**.
 
 **The tuner.** A pitch pipe can't tell you whether the note you sang back was
-the one it gave you. Tap the tuning fork in the corner and it will.
+the one it gave you. Tap **Tuner** at the top and it will. Everything it listens
+for is set from the tuner itself — the note, the chord, the octave — so nothing
+here ever sends you back to the other screen to answer a question it asked.
 
-*One voice* names what you're singing and shows how far off it is, in cents,
+*Voice* names what you're singing and shows how far off it is, in cents,
 with a needle you can read while you're still singing. It also keeps a running
 average — the flat-drift number, which is how you find out that the chorus sagged
 fourteen cents over a run-through.
 
-*Whole chord* is the interesting one. Pick a chord on the pipe, sing it, and
+*Parts* is the interesting one. Pick a chord, sing it, and
 every part gets its own meter: who's flat, who's sharp, who isn't there. The
 whole panel lights up when all four are locked in. Because the pipe already
 knows what the chord is *meant* to be, this doesn't have to solve blind
@@ -75,11 +85,11 @@ chorus opens the same list with no account, no sign-in and nothing uploaded
 anywhere. A list that arrives by link is shown and offered, never merged on your
 behalf.
 
-**Stack.** The last button on the chord row turns the disc into a note picker:
-tap holes to stack them, tap again to lift one an octave, tap once more to drop
-it. Any set of notes you like, sounded together — a diminished chord, two notes
-to check an interval, the whole scale at once. The stack is remembered, and the
-tuner will listen for it just like a preset chord.
+**Custom.** The third of the three things the pipe can give you turns the disc
+into a note picker: tap holes to stack them, tap again to lift one an octave,
+tap once more to drop it. Any set of notes you like, sounded together — a
+diminished chord, two notes to check an interval, the whole scale at once. The
+set is remembered, and the tuner will listen for it just like a preset chord.
 
 The disc deliberately does **not** turn to a hole you tap here. Every hole is on
 screen the whole time, so the rotation bought nothing and made picking four
@@ -94,6 +104,12 @@ a row. Major, barbershop 7th, minor 7th and major 6th, voiced Bass / Bari /
 Lead / Tenor with the selected pitch as the bass. Each part's actual note is
 printed under the disc so you can read them out.
 
+The pipe gives you one of three things — **Note**, **Chord** or **Custom** — and
+the chord *types* live one level below that, appearing only once Chord is what
+you asked for. They used to share a single row: "single note" listed as though
+it were a kind of chord, a custom stack as though it were another, and no room
+to add a fifth voicing without the row running off the side of a phone.
+
 **Just intonation.** Barbershop is sung in just intonation, not equal
 temperament, and the difference *is* the style. When every part is a whole-number
 ratio of the bass, all four voices put their overtones in exactly the same
@@ -104,14 +120,15 @@ piano would put it, and it is meant to; a tuner that measured you against equal
 temperament would tell a perfectly locked chord it was badly flat. Equal
 temperament is one tap away for when you're tuning to a piano.
 
-**Three ways to play, in one control.** Touch, Breath and Drone sit together as
-one picker, because they are three answers to a single question and only one of
-them can be true at a time. **Touch** is a thumb on the middle. **Breath** is
-the microphone. **Drone** latches the pitch on and leaves it running while both
-hands are free — for matching a vowel, finding a chord by ear, or holding a
-reference while a section works something out. Breath and Drone were separate
-toggles that quietly switched each other off: the behaviour was right and
-completely invisible. The tuner's reference button latches too.
+**Breath is an extra input, not a mode.** Turning it on doesn't take the
+instrument away — the middle of the pipe keeps working exactly as it did. That
+is why it is a plain toggle and not one of a set of ways to play: there is only
+one way to play, and breath is another way to reach it.
+
+While the microphone is open, air streams up over the pipe and spills around
+it, faster and brighter the harder you blow. Blowing at a phone otherwise gives
+you nothing at all to go on — you cannot hear yourself over the speaker — and a
+drift of air when nothing is happening doubles as *it is listening*.
 
 **Hall Mode.** A phone speaker against forty singers in a church basement is a
 losing fight. Hall Mode drops the lows the speaker can't produce anyway,
@@ -226,9 +243,10 @@ src/
     notes.ts      the thirteen holes, tuning maths, barbershop voicings
     setlist.ts    saved pitches, and packing a list into a URL
   ui/
-    PitchDisc.tsx the brass disc (canvas)
-    TuneView.tsx  the tuner — one voice, the whole chord, the ring test
+    PitchDisc.tsx the brass disc (canvas), and the air over it
+    TuneView.tsx  the tuner — one voice, every part, the ring test
     RingView.tsx  recording, and the report afterwards
+    NeedsChord.tsx what to say when there is nothing to listen for yet
     SetlistSheet.tsx, ControlTray.tsx, BreathMeter.tsx, SettingsSheet.tsx
   hooks/          wake lock, persisted preferences
 ```
@@ -239,11 +257,12 @@ Everything runs client-side. No backend, no accounts, no analytics.
 
 | | |
 |---|---|
+| Hold the middle | sound it for as long as you hold |
+| Tap the middle | leave it sounding; tap again to stop |
+| Space | the same bargain, on a keyboard |
 | Drag the ring | spin the pipe |
 | Tap a note | jump to it |
-| Tap a note in Stack | add it, lift it an octave, remove it — without moving the pipe |
-| Hold the middle | sound it |
-| Space | sound it (desktop) |
+| Tap a note in Custom | add it, lift it an octave, remove it — without moving the pipe |
 | ← / → | previous / next note |
 | Pipe / Tuner, top right | the two screens |
 | List icon, top right | the setlist |

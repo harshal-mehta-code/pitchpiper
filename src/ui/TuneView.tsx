@@ -10,6 +10,7 @@ import { getAudio } from '../audio/engine'
 import { RingView } from './RingView'
 import type { RingTarget } from '../audio/ring'
 import { midiToLabel, ratioLabel, type ChordTone } from '../music/notes'
+import { NeedsChord } from './NeedsChord'
 
 /**
  * The tuner.
@@ -27,6 +28,13 @@ import { midiToLabel, ratioLabel, type ChordTone } from '../music/notes'
 
 const CENTS_RANGE = 50
 
+/**
+ * Named for what you are looking at, not for what is sounding.
+ *
+ * The middle one was "Chord" until the tray below it also grew a "Chord" — two
+ * controls a thumb apart, same word, different jobs. "Parts" is what it
+ * actually shows, and it is what a director would say out loud.
+ */
 export type TuneMode = 'voice' | 'chord' | 'ring'
 
 export interface TuneViewProps {
@@ -38,17 +46,28 @@ export interface TuneViewProps {
   micDeviceId: string | null
   /** The chord's ideal just ratios, for the ring test. */
   ringTargets: RingTarget[]
+  /** True when the target is a hand-built stack rather than a named chord. */
+  isCustom: boolean
   /** Lifted, because the tray outside this view changes with it. */
   mode: TuneMode
   onMode: (m: TuneMode) => void
   /** Press and hold to hear the reference. Listening pauses while it sounds. */
   onReferenceDown: () => void
   onReferenceUp: () => void
+  /**
+   * Take me to the pipe.
+   *
+   * Building a custom set of notes genuinely needs the disc, and that is the
+   * one thing in here that cannot be done in place. Where the app used to say
+   * "go and do this on the other screen" it now offers to go there — an
+   * instruction to navigate is not an interface.
+   */
+  onGoToPipe: () => void
 }
 
 const TAGLINE: Record<'voice' | 'chord', string> = {
   voice: 'What one voice is singing, and how far off it is.',
-  chord: 'All four parts at once — who is flat, who is sharp.',
+  chord: 'Every part of the chord at once — who is flat, who is sharp.',
 }
 
 const STATUS_TEXT: Record<AnalyzerStatus, string> = {
@@ -176,7 +195,7 @@ export function TuneView(props: TuneViewProps) {
           onClick={() => setMode('chord')}
           aria-pressed={mode === 'chord'}
         >
-          Chord
+          Parts
         </button>
         <button
           className={`seg${mode === 'ring' ? ' is-on' : ''}`}
@@ -196,6 +215,8 @@ export function TuneView(props: TuneViewProps) {
           targets={props.ringTargets}
           chordLabel={props.chordLabel}
           micDeviceId={props.micDeviceId}
+          isCustom={props.isCustom}
+          onGoToPipe={props.onGoToPipe}
         />
       ) : bad ? (
         <div className="tune-blocked">
@@ -217,6 +238,8 @@ export function TuneView(props: TuneViewProps) {
           chordLabel={props.chordLabel}
           useFlats={props.useFlats}
           paused={sounding}
+          isCustom={props.isCustom}
+          onGoToPipe={props.onGoToPipe}
         />
       )}
 
@@ -352,12 +375,16 @@ function ChordPanel({
   chordLabel,
   useFlats,
   paused,
+  isCustom,
+  onGoToPipe,
 }: {
   readingRef: React.RefObject<ChordReading | null>
   tones: ChordTone[]
   chordLabel: string
   useFlats: boolean
   paused: boolean
+  isCustom: boolean
+  onGoToPipe: () => void
 }) {
   const rowsRef = useRef<(HTMLDivElement | null)[]>([])
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -436,11 +463,14 @@ function ChordPanel({
         ))}
       </div>
 
-      <p className="hint tune-hint">
-        {tones.length < 2
-          ? 'Pick a chord on the pipe below and this shows every part at once.'
-          : 'Sing it and hold. Green in the middle is locked in; the whole panel lights when all of it is.'}
-      </p>
+      {tones.length < 2 ? (
+        <NeedsChord isCustom={isCustom} onGoToPipe={onGoToPipe} />
+      ) : (
+        <p className="hint tune-hint">
+          Sing it and hold. Green in the middle is locked in; the whole panel
+          lights when all of it is.
+        </p>
+      )}
     </div>
   )
 }

@@ -1,20 +1,23 @@
-import { CHORD_TYPES, STACK_ID } from '../music/notes'
+import { CHORD_TYPES } from '../music/notes'
 
 /**
- * How the pipe is sounded.
+ * What the pipe gives you.
  *
- * These were two independent toggles — Breath and Drone — that silently turned
- * each other off, which meant the one rule governing them was the one thing you
- * could not see. Three exclusive choices state it outright, and they read as
- * what they are: the same instrument, played three ways.
+ * Three genuinely different kinds of thing, and they used to share a row with
+ * the chord types — "single note" listed as though it were a kind of chord, a
+ * custom stack as though it were another, and no room to add a sixth chord
+ * without the row falling off a phone. Splitting them puts the chord types one
+ * level down, where any number of them can live.
  */
-export type PlayMode = 'touch' | 'breath' | 'drone'
+export type PitchMode = 'note' | 'chord' | 'custom'
 
 export interface ControlTrayProps {
+  pitchMode: PitchMode
+  onPitchMode: (m: PitchMode) => void
   chordId: string
   onChordId: (id: string) => void
-  playMode: PlayMode
-  onPlayMode: (m: PlayMode) => void
+  breathMode: boolean
+  onBreathMode: (v: boolean) => void
   octaveShift: number
   onOctaveShift: (v: number) => void
   hallMode: boolean
@@ -24,19 +27,25 @@ export interface ControlTrayProps {
   onOpenSettings: () => void
   /**
    * Drops the controls that only mean something while the pipe is the thing on
-   * screen. The chord picker stays, because in the tuner it chooses what is
-   * being listened for.
+   * screen. The pitch picker stays, because in the tuner it chooses what is
+   * being listened for — and so does the note stepper, because otherwise
+   * choosing a target would mean leaving the tuner to do it.
    */
   compact?: boolean
-  /** What the chord picker is doing right now. */
+  /** Steps the root note. Only rendered in the tuner, where there is no disc. */
+  noteLabel?: string
+  onNoteStep?: (delta: number) => void
+  /** What the pitch picker is doing right now. */
   label?: string
 }
 
 export function ControlTray({
+  pitchMode,
+  onPitchMode,
   chordId,
   onChordId,
-  playMode,
-  onPlayMode,
+  breathMode,
+  onBreathMode,
   octaveShift,
   onOctaveShift,
   hallMode,
@@ -44,124 +53,137 @@ export function ControlTray({
   a4,
   onOpenSettings,
   compact,
-  label = 'Chord',
+  noteLabel,
+  onNoteStep,
+  label = 'Give',
 }: ControlTrayProps) {
+  const chords = CHORD_TYPES.filter((c) => c.id !== 'unison')
+
   return (
     <div className="tray">
       <div className="tray-label">{label}</div>
-      <div className="segmented" role="group" aria-label="Chord type">
-        {CHORD_TYPES.map((c) => (
-          <button
-            key={c.id}
-            className={`seg${chordId === c.id ? ' is-on' : ''}`}
-            onClick={() => onChordId(c.id)}
-            aria-pressed={chordId === c.id}
-            title={c.label}
-          >
-            {c.short}
-          </button>
-        ))}
+
+      <div className="segmented" role="group" aria-label="What the pipe gives">
         <button
-          className={`seg seg-stack${chordId === STACK_ID ? ' is-on' : ''}`}
-          onClick={() => onChordId(STACK_ID)}
-          aria-pressed={chordId === STACK_ID}
-          aria-label="Build your own"
+          className={`seg seg-kind${pitchMode === 'note' ? ' is-on' : ''}`}
+          onClick={() => onPitchMode('note')}
+          aria-pressed={pitchMode === 'note'}
+          title="One pitch on its own"
+        >
+          Note
+        </button>
+        <button
+          className={`seg seg-kind${pitchMode === 'chord' ? ' is-on' : ''}`}
+          onClick={() => onPitchMode('chord')}
+          aria-pressed={pitchMode === 'chord'}
+          title="A four-part voicing, with the selected pitch as the bass"
+        >
+          Chord
+        </button>
+        <button
+          className={`seg seg-kind${pitchMode === 'custom' ? ' is-on' : ''}`}
+          onClick={() => onPitchMode('custom')}
+          aria-pressed={pitchMode === 'custom'}
           title="Build your own — tap holes on the pipe"
         >
-          <StackIcon />
+          Custom
         </button>
       </div>
 
-      {/* Two groups rather than a row of loose pills. They will not all fit
-          across a phone, and wrapping them individually strands the last one
-          alone on a second row; wrapping as groups puts how-you-play on one
-          line and the adjustments on the next, which reads as a decision. */}
+      {/* Only when there is a chord to be a type of. Wraps rather than scrolls,
+          so a sixth and a seventh voicing can be added without this becoming a
+          row that hides its own contents. */}
+      {pitchMode === 'chord' && (
+        <div className="chord-types" role="group" aria-label="Chord type">
+          {chords.map((c) => (
+            <button
+              key={c.id}
+              className={`chord-type${chordId === c.id ? ' is-on' : ''}`}
+              onClick={() => onChordId(c.id)}
+              aria-pressed={chordId === c.id}
+              title={c.label}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="tray-row">
-        {!compact && (
-          <div
-            className="segmented tray-group"
-            role="group"
-            aria-label="How the pipe sounds"
-          >
-            <button
-              className={`seg seg-mode${playMode === 'touch' ? ' is-on' : ''}`}
-              onClick={() => onPlayMode('touch')}
-              aria-pressed={playMode === 'touch'}
-              title="Hold the middle of the pipe to sound it"
-            >
-              <TouchIcon />
-              <span>Touch</span>
+        {compact && onNoteStep && (
+          <div className="pill pill-stepper" role="group" aria-label="Pitch">
+            <button onClick={() => onNoteStep(-1)} aria-label="Lower pitch">
+              −
             </button>
-            <button
-              className={`seg seg-mode${playMode === 'breath' ? ' is-on' : ''}`}
-              onClick={() => onPlayMode('breath')}
-              aria-pressed={playMode === 'breath'}
-              title="Blow at your phone"
-            >
-              <MicIcon />
-              <span>Breath</span>
-            </button>
-            <button
-              className={`seg seg-mode${playMode === 'drone' ? ' is-on' : ''}`}
-              onClick={() => onPlayMode('drone')}
-              aria-pressed={playMode === 'drone'}
-              title="Keep the pitch sounding with nothing held down"
-            >
-              <DroneIcon />
-              <span>Drone</span>
+            <span className="stepper-value stepper-note">{noteLabel}</span>
+            <button onClick={() => onNoteStep(1)} aria-label="Higher pitch">
+              +
             </button>
           </div>
         )}
 
-        <div className="tray-group">
-          <div className="pill pill-stepper" role="group" aria-label="Octave">
-            {/* A bare minus-nought-plus could be adjusting anything. */}
-            <span className="stepper-tag" aria-hidden="true">
-              Oct
-            </span>
-            <button
-              onClick={() => onOctaveShift(Math.max(-1, octaveShift - 1))}
-              disabled={octaveShift <= -1}
-              aria-label="Octave down"
-            >
-              −
-            </button>
-            <span className="stepper-value">
-              {octaveShift > 0 ? `+${octaveShift}` : octaveShift}
-            </span>
-            <button
-              onClick={() => onOctaveShift(Math.min(1, octaveShift + 1))}
-              disabled={octaveShift >= 1}
-              aria-label="Octave up"
-            >
-              +
-            </button>
-          </div>
-
-          {!compact && (
-            <button
-              className={`pill${hallMode ? ' is-on' : ''}`}
-              onClick={() => onHallMode(!hallMode)}
-              aria-pressed={hallMode}
-              title="Cut through a room full of singers"
-            >
-              <HallIcon />
-              <span>Hall</span>
-            </button>
-          )}
-
-          {/* Silent at 440, impossible to miss anywhere else. A chorus that has
-              been at 442 all evening should never have to go looking. */}
-          {a4 !== 440 && (
-            <button
-              className="pill pill-badge"
-              onClick={onOpenSettings}
-              title="Concert pitch — tap to change"
-            >
-              A={a4}
-            </button>
-          )}
+        <div className="pill pill-stepper" role="group" aria-label="Octave">
+          {/* A bare minus-nought-plus could be adjusting anything. */}
+          <span className="stepper-tag" aria-hidden="true">
+            Oct
+          </span>
+          <button
+            onClick={() => onOctaveShift(Math.max(-1, octaveShift - 1))}
+            disabled={octaveShift <= -1}
+            aria-label="Octave down"
+          >
+            −
+          </button>
+          <span className="stepper-value">
+            {octaveShift > 0 ? `+${octaveShift}` : octaveShift}
+          </span>
+          <button
+            onClick={() => onOctaveShift(Math.min(1, octaveShift + 1))}
+            disabled={octaveShift >= 1}
+            aria-label="Octave up"
+          >
+            +
+          </button>
         </div>
+
+        {/* Breath is an extra input you switch on, not a mode that takes the
+            instrument away: the middle of the pipe keeps working either way.
+            That is why it is a plain toggle again and not one of a set. */}
+        {!compact && (
+          <button
+            className={`pill${breathMode ? ' is-on' : ''}`}
+            onClick={() => onBreathMode(!breathMode)}
+            aria-pressed={breathMode}
+            title="Blow at your phone to sound it"
+          >
+            <MicIcon />
+            <span>Breath</span>
+          </button>
+        )}
+
+        {!compact && (
+          <button
+            className={`pill${hallMode ? ' is-on' : ''}`}
+            onClick={() => onHallMode(!hallMode)}
+            aria-pressed={hallMode}
+            title="Cut through a room full of singers"
+          >
+            <HallIcon />
+            <span>Hall</span>
+          </button>
+        )}
+
+        {/* Silent at 440, impossible to miss anywhere else. A chorus that has
+            been at 442 all evening should never have to go looking. */}
+        {a4 !== 440 && (
+          <button
+            className="pill pill-badge"
+            onClick={onOpenSettings}
+            title="Concert pitch — tap to change"
+          >
+            A={a4}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -169,41 +191,11 @@ export function ControlTray({
 
 // --- icons ------------------------------------------------------------------
 
-/** Three notes stacked up — what the custom picker builds. */
-function StackIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="7" cy="17.5" r="2.2" />
-      <circle cx="12" cy="12" r="2.2" />
-      <circle cx="17" cy="6.5" r="2.2" />
-    </svg>
-  )
-}
-
-/** A fingertip on the hub. */
-function TouchIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M10 11V6.2a1.8 1.8 0 0 1 3.6 0V13" />
-      <path d="M13.6 10.8a1.7 1.7 0 0 1 3.4 0v4.4a5.4 5.4 0 0 1-5.4 5.4h-.7a4 4 0 0 1-3.1-1.5l-2.6-3.3a1.6 1.6 0 0 1 2.3-2.2L10 15" />
-    </svg>
-  )
-}
-
 function MicIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z" />
       <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" />
-    </svg>
-  )
-}
-
-/** A tone that just keeps going — a flat line with a wave riding on it. */
-function DroneIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M2 12h3.2c1 0 1.4-5 2.6-5s1.6 10 2.7 10 1.6-8 2.7-8 1.5 3 2.4 3H22" />
     </svg>
   )
 }

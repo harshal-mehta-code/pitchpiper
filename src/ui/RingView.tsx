@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getAudio } from '../audio/engine'
 import { MAX_SECONDS, MIN_SECONDS, SnippetRecorder, toAudioBuffer } from '../audio/recorder'
 import { analyseRing, type Recording, type RingReport, type RingTarget } from '../audio/ring'
+import { NeedsChord } from './NeedsChord'
 
 /**
  * The ring test: sing a chord at it, get told whether it rang and who broke it.
@@ -16,11 +17,19 @@ export interface RingViewProps {
   targets: RingTarget[]
   chordLabel: string
   micDeviceId: string | null
+  isCustom: boolean
+  onGoToPipe: () => void
 }
 
 type Phase = 'idle' | 'recording' | 'working' | 'done' | 'failed'
 
-export function RingView({ targets, chordLabel, micDeviceId }: RingViewProps) {
+export function RingView({
+  targets,
+  chordLabel,
+  micDeviceId,
+  isCustom,
+  onGoToPipe,
+}: RingViewProps) {
   const [phase, setPhase] = useState<Phase>('idle')
   const [error, setError] = useState<string | null>(null)
   const [report, setReport] = useState<RingReport | null>(null)
@@ -163,15 +172,22 @@ export function RingView({ targets, chordLabel, micDeviceId }: RingViewProps) {
       {phase !== 'done' && (
         <div className="ring-intro">
           <h2>Did it ring?</h2>
-          <p>
-            Sing <strong>{chordLabel}</strong> and hold it. This looks at where
-            your overtones landed — when every part is a whole-number ratio of
-            the bass, all four of you put partials in the same places and the
-            chord blooms. Miss by a few cents and those same partials beat
-            against each other instead.
-          </p>
-          {targets.length < 2 && (
-            <p className="hint">Pick a chord on the pipe first — one voice can't ring.</p>
+          {/* Only worth explaining once there is something to sing. Told to
+              sing a single note — or worse, told to sing the words "tap holes
+              on the pipe" — the paragraph below reads as nonsense. */}
+          {targets.length < 2 ? (
+            <NeedsChord isCustom={isCustom} onGoToPipe={onGoToPipe} />
+          ) : (
+            <p>
+              Sing{' '}
+              <strong>
+                {isCustom ? `all ${targets.length} notes together` : chordLabel}
+              </strong>{' '}
+              and hold it. This looks at where your overtones landed — when
+              every part is a whole-number ratio of the bass, all of you put
+              partials in the same places and the chord blooms. Miss by a few
+              cents and those same partials beat against each other instead.
+            </p>
           )}
           {error && <p className="ring-error">{error}</p>}
         </div>
