@@ -63,7 +63,12 @@ export function ControlTray({
     <div className="tray">
       <div className="tray-label">{label}</div>
 
-      <div className="segmented" role="group" aria-label="What the pipe gives">
+      <div
+        className="segmented"
+        role="group"
+        aria-label="What the pipe gives"
+        data-tour="kinds"
+      >
         <button
           className={`seg seg-kind${pitchMode === 'note' ? ' is-on' : ''}`}
           onClick={() => onPitchMode('note')}
@@ -155,6 +160,7 @@ export function ControlTray({
             onClick={() => onBreathMode(!breathMode)}
             aria-pressed={breathMode}
             title="Blow at your phone to sound it"
+            data-tour="breath"
           >
             <MicIcon />
             <span>Breath</span>

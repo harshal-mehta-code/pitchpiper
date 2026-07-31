@@ -177,6 +177,31 @@ losing fight. Hall Mode drops the lows the speaker can't produce anyway,
 saturates for upper harmonics so the ear reconstructs the missing fundamental,
 pushes a presence bump where hearing is most sensitive, and compresses hard.
 
+**A tour you have to ask for.** Seven steps, about a minute, and not a
+slideshow: it puts a light on the real control on the real screen and leaves the
+whole app working underneath, so each step names one thing to try and ticks
+itself off the moment you do it. Next is always there whether or not you did the
+thing, Back goes back, and Escape leaves — a tour you cannot walk out of is an
+interrogation. Steps whose lesson you already know quietly drop their prompt
+rather than asking you to do something you have done.
+
+Getting to it is the other half. There is no first-run modal, because a modal
+arrives before anyone has a question, blocks the thing they opened the app to
+do, and gets dismissed unread — which then counts, in the numbers, as onboarding
+delivered. Instead the instrument lands first, and a second and a half later a
+small bubble offers the tour from the corner. Waved off, it never asks again;
+the **?** it points at keeps a dot until the tour has been opened once, so
+changing your mind is always one tap. The one exception is somebody who turned
+it down and then, for half a minute, never changed the note and never sounded
+anything — that is not a person browsing, it is a person looking at an
+instrument they haven't worked out how to play, and they get asked once more,
+worded for it. Never a third time.
+
+It teaches the spine and not the map: pick, sound, chord, breath, setlist,
+tuner. Custom stacks, hall mode and concert pitch are deliberately absent —
+they are discoverable where they live, and the tour that gets finished teaches
+more than the thorough one abandoned on card four.
+
 **Rehearsal-hall details.** Screen stays awake. Works fully offline once
 installed to your home screen. A=430–446 tuning. Sharps or flats. Octave shift.
 Everything remembered between sessions. On modern iOS it plays through the
@@ -297,6 +322,7 @@ src/
     RingView.tsx  recording, and the report afterwards
     NeedsChord.tsx what to say when there is nothing to listen for yet
     Sheet.tsx     the panel that slides up, and how to get back out of it
+    Tour.tsx      the spotlight tour, and the tap on the shoulder that offers it
     SetlistSheet.tsx, ControlTray.tsx, BreathMeter.tsx, SettingsSheet.tsx
   hooks/          wake lock, persisted preferences
 ```
@@ -316,6 +342,7 @@ Everything runs client-side. No backend, no accounts, no analytics.
 | Tap a note under the disc | move that one an octave |
 | ← / → | previous / next note |
 | Pipe / Tuner, top right | the two screens |
+| ? icon, top right | the tour |
 | List icon, top right | the setlist |
 | Sliders icon, top right | settings |
 

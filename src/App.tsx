@@ -5,6 +5,7 @@ import { BreathMeter } from './ui/BreathMeter'
 import { SettingsSheet } from './ui/SettingsSheet'
 import { TuneView, type TuneMode } from './ui/TuneView'
 import { SetlistSheet } from './ui/SetlistSheet'
+import { HelpIcon, Tour, TourNudge } from './ui/Tour'
 import { setlistFromLocation, type SetlistEntry } from './music/setlist'
 import { usePersistentState } from './hooks/usePersistentState'
 import { useWakeLock } from './hooks/useWakeLock'
@@ -78,6 +79,27 @@ const REARM_DELAY_MS = 220
 /** A press shorter than this is a tap, and a tap latches. Matches the disc. */
 const TAP_MS = 260
 
+/**
+ * How long the app waits before offering the tour at all.
+ *
+ * Long enough that the instrument is the first thing on screen and the offer
+ * arrives beside it rather than in front of it. Somebody who opened this to
+ * give a pitch in the next three seconds should be able to.
+ */
+const OFFER_MS = 1500
+
+/**
+ * How long someone can sit on the pipe having done nothing with it before the
+ * offer is made a second time.
+ *
+ * The one signal worth acting on. Not a timer on its own — half a minute of
+ * *use* is somebody enjoying themselves — but half a minute in which the note
+ * has never changed and nothing has ever sounded is somebody looking at an
+ * instrument they haven't worked out how to play. Asked once more, then never
+ * again either way.
+ */
+const STUCK_MS = 30000
+
 interface SoundParams {
   noteIndex: number
   chordId: string
@@ -138,6 +160,10 @@ export default function App() {
     'micDevice',
     null,
   )
+  /** The tour has been opened at least once. Ends both the dot and the offers. */
+  const [tourSeen, setTourSeen] = usePersistentState('tourSeen', false)
+  /** The offer has been waved off once, so it is never made unprompted again. */
+  const [tourAsked, setTourAsked] = usePersistentState('tourAsked', false)
 
   // --- session state -------------------------------------------------------
   const [view, setView] = useState<View>('pipe')
@@ -154,6 +180,9 @@ export default function App() {
   /** True while a puff-triggered note is ringing with the microphone released. */
   const [puffSounding, setPuffSounding] = useState(false)
   const [micInputs, setMicInputs] = useState<MediaDeviceInfo[]>([])
+  const [tourOpen, setTourOpen] = useState(false)
+  /** Which offer is on screen, if any. */
+  const [nudge, setNudge] = useState<'none' | 'first' | 'stuck'>('none')
 
   useWakeLock(keepAwake)
 
@@ -643,6 +672,54 @@ export default function App() {
     handleBreathMode(true)
   }, [view, handleBreathMode])
 
+  // --- the tour ------------------------------------------------------------
+
+  /** Whether this person has yet done anything with the instrument. */
+  const engagedRef = useRef(false)
+  const firstNoteRef = useRef(noteIndex)
+  useEffect(() => {
+    if (hubActive || drone || puffSounding || noteIndex !== firstNoteRef.current) {
+      engagedRef.current = true
+    }
+  }, [drone, hubActive, noteIndex, puffSounding])
+
+  const startTour = useCallback(() => {
+    setNudge('none')
+    setTourAsked(true)
+    setTourSeen(true)
+    // The tour opens on the instrument, whichever screen you called it from,
+    // because the first four things it has to say are about the instrument.
+    setView('pipe')
+    setSettingsOpen(false)
+    setSetlistOpen(false)
+    setTourOpen(true)
+  }, [setTourAsked, setTourSeen])
+
+  const declineTour = useCallback(() => {
+    setNudge('none')
+    setTourAsked(true)
+  }, [setTourAsked])
+
+  // The first offer. Held back a beat so the instrument lands first.
+  useEffect(() => {
+    if (tourSeen || tourAsked) return
+    const t = window.setTimeout(
+      () => setNudge((n) => (n === 'none' ? 'first' : n)),
+      OFFER_MS,
+    )
+    return () => window.clearTimeout(t)
+  }, [tourAsked, tourSeen])
+
+  // The second and last. Only for somebody who has genuinely done nothing.
+  useEffect(() => {
+    if (tourSeen) return
+    const t = window.setTimeout(() => {
+      if (engagedRef.current) return
+      setNudge((n) => (n === 'none' ? 'stuck' : n))
+    }, STUCK_MS)
+    return () => window.clearTimeout(t)
+  }, [tourSeen])
+
   // --- glow ----------------------------------------------------------------
   // Driven from the output signal itself rather than from an envelope we track
   // separately, so the light is always telling the truth about the sound.
@@ -832,15 +909,35 @@ export default function App() {
               onClick={() => !tuning && toggleTuner()}
               aria-pressed={tuning}
               title="Tuner — hear how you’re doing"
+              data-tour="tuner"
             >
               Tuner
             </button>
+          </div>
+          {/* The tour lives behind a question mark that is always in the same
+              place, wearing a dot until it has been opened once. An offer you
+              turned down should still leave something on screen to change your
+              mind about. */}
+          <div className="help-anchor">
+            <button
+              className={`icon-btn${tourSeen ? '' : ' is-new'}${tourOpen ? ' is-on' : ''}`}
+              onClick={startTour}
+              aria-label="How it works"
+              title="How it works — take the tour"
+              data-tour="help"
+            >
+              <HelpIcon />
+            </button>
+            {nudge !== 'none' && !tourOpen && (
+              <TourNudge kind={nudge} onTake={startTour} onDismiss={declineTour} />
+            )}
           </div>
           <button
             className={`icon-btn${setlistOpen ? ' is-on' : ''}`}
             onClick={() => setSetlistOpen(true)}
             aria-label="Setlist"
             title="Setlist — your songs and their starting pitches"
+            data-tour="setlist"
           >
             <ListIcon />
           </button>
@@ -998,6 +1095,23 @@ export default function App() {
         micInputs={micInputs}
         micDeviceId={micDeviceId}
         onMicDevice={handleMicDevice}
+        onTour={startTour}
+      />
+
+      <Tour
+        open={tourOpen}
+        // A sheet is a screen of its own. The tour steps aside for one and is
+        // waiting where it was when the sheet closes.
+        hidden={settingsOpen || setlistOpen}
+        signals={{
+          view,
+          noteIndex,
+          sounding: hubActive || drone || puffSounding,
+          pitchMode,
+          breathMode,
+          setlistOpen,
+        }}
+        onClose={() => setTourOpen(false)}
       />
     </div>
   )

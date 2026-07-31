@@ -28,6 +28,7 @@ export interface SettingsSheetProps {
   micInputs: MediaDeviceInfo[]
   micDeviceId: string | null
   onMicDevice: (id: string | null) => void
+  onTour: () => void
 }
 
 export function SettingsSheet(props: SettingsSheetProps) {
@@ -239,6 +240,16 @@ export function SettingsSheet(props: SettingsSheetProps) {
               Off
             </button>
           </div>
+        </Row>
+
+        {/* Also here, not only behind the question mark. Settings is where
+            people go looking when they cannot find something, and being told
+            "it's the other button" by an app that could simply have offered it
+            is a small, avoidable insult. */}
+        <Row label="How it works" value="A minute">
+          <button className="chip wide" onClick={props.onTour}>
+            Take the tour
+          </button>
         </Row>
 
         <div className="sheet-about">

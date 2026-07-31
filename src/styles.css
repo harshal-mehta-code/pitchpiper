@@ -179,6 +179,7 @@ body {
 }
 
 .icon-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1402,8 +1403,13 @@ body {
   }
 }
 
-/* A narrow phone loses the wordmark before it loses a control. */
-@media (max-width: 370px) {
+/* A narrow phone loses the wordmark before it loses a control.
+ *
+ * 420px, not 370: the bar carries a question mark now, and a name clipped
+ * halfway through — PITCH PIP — reads as a bug rather than as a tight fit. The
+ * instrument is the identity here; the word above it is a nicety, and it is the
+ * thing that goes. */
+@media (max-width: 420px) {
   .wordmark {
     display: none;
   }
@@ -1836,4 +1842,401 @@ body {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--brass-dim);
+}
+
+/* --- the tour ------------------------------------------------------------- */
+
+/*
+ * A light on the real control, not a slideshow about it.
+ *
+ * The whole overlay is transparent to the pointer apart from the card, so the
+ * instrument underneath keeps working while it is being explained — which is the
+ * entire point, and the reason none of this is a modal.
+ */
+
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  transition: opacity var(--t) var(--ease);
+}
+
+/* A sheet came up. Stand aside rather than float over the top of it. */
+.tour.is-away {
+  opacity: 0;
+}
+
+.tour-veil {
+  position: absolute;
+  inset: 0;
+  /* The gradient itself is written by the tour, which is the only thing that
+     knows where the target is this frame. */
+  background: rgba(3, 8, 6, 0.62);
+}
+
+.tour-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 1.5px solid rgba(var(--amber-rgb), 0.55);
+  opacity: 0;
+  transition:
+    width var(--t) var(--ease),
+    height var(--t) var(--ease),
+    transform 0.3s var(--ease),
+    opacity var(--t) var(--ease);
+  animation: tour-pulse 2.6s var(--ease) infinite;
+}
+
+@keyframes tour-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(var(--amber-rgb), 0.22),
+      0 0 20px rgba(var(--amber-rgb), 0.14);
+  }
+  55% {
+    box-shadow:
+      0 0 0 7px rgba(var(--amber-rgb), 0),
+      0 0 32px rgba(var(--amber-rgb), 0.26);
+  }
+}
+
+.tour-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: min(304px, calc(100vw - 24px));
+  pointer-events: auto;
+  padding: 15px 15px 11px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-lit);
+  background: linear-gradient(180deg, #1b2d26, #0e1a15);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.55),
+    0 0 40px rgba(var(--amber-rgb), 0.06),
+    inset 0 1px 0 rgba(255, 220, 150, 0.09);
+  /* Slides between spotlights; the first placement suppresses this so it does
+     not fly in from the corner. */
+  transition: transform 0.3s var(--ease);
+  animation: fade 0.2s ease;
+}
+
+/* Announced, never shown — the dots along the bottom say the same thing. */
+.tour-count {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.tour-title {
+  margin: 0 26px 5px 0;
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--brass-lit);
+}
+
+.tour-body {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-dim);
+}
+
+/* The one thing to try. Amber while it is an ask, green the moment it is done —
+   the same two colours every verdict in this app uses. */
+.tour-todo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 11px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-lit);
+  background: var(--wash-lit);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--amber);
+  transition:
+    color var(--t),
+    border-color var(--t),
+    background var(--t);
+}
+
+.tour-todo.is-done {
+  color: var(--good);
+  border-color: rgba(var(--good-rgb), 0.45);
+  background: rgba(var(--good-rgb), 0.1);
+}
+
+.tour-tick {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.tour-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 13px;
+}
+
+.tour-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.tour-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(217, 180, 106, 0.22);
+  transition:
+    background var(--t),
+    transform var(--t) var(--ease);
+}
+
+.tour-dot.is-past {
+  background: var(--brass-dim);
+}
+
+.tour-dot.is-on {
+  background: var(--amber);
+  transform: scale(1.35);
+}
+
+.tour-back,
+.tour-next {
+  border: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.tour-back {
+  padding: 6px 2px;
+  background: none;
+  color: var(--brass-dim);
+}
+
+.tour-back:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.tour-next {
+  padding: 7px 15px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(180deg, #f0cf85, #c69a41);
+  color: #2a1c05;
+  font-weight: 600;
+}
+
+.tour-x {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--brass-dim);
+  cursor: pointer;
+}
+
+.tour-x svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+
+@media (hover: hover) {
+  .tour-x:hover {
+    color: var(--ink);
+  }
+  .tour-back:hover:not(:disabled) {
+    color: var(--brass);
+  }
+}
+
+/* --- the way in ----------------------------------------------------------- */
+
+.help-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Unopened. One dot, on the button that will still be there tomorrow — the
+   least an app can do to say "there is something here" without saying it in
+   front of everything else. */
+.icon-btn.is-new::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow:
+    0 0 0 2px var(--felt),
+    0 0 9px rgba(var(--amber-rgb), 0.7);
+  animation: tour-blink 2.8s var(--ease) infinite;
+}
+
+@keyframes tour-blink {
+  0%,
+  70%,
+  100% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 0.45;
+  }
+}
+
+.tour-nudge {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 4px 3px 11px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line-lit);
+  background: linear-gradient(180deg, #1b2d26, #101d18);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.45),
+    0 0 24px rgba(var(--amber-rgb), 0.07);
+  /* Shrink-to-fit against a 34px containing block is a column of one word per
+     line, so the width is asked for explicitly — then capped, because the
+     button this hangs from is only a hundred-odd pixels in from the right and
+     the bubble grows leftwards from there. */
+  width: max-content;
+  max-width: min(262px, calc(100vw - 116px));
+  animation: tour-nudge-in 0.3s var(--ease);
+}
+
+.tour-nudge::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  /* Under the middle of the 34px button this hangs from. */
+  right: 12px;
+  width: 9px;
+  height: 9px;
+  transform: rotate(45deg);
+  background: #1b2d26;
+  border-left: 1px solid var(--line-lit);
+  border-top: 1px solid var(--line-lit);
+}
+
+@keyframes tour-nudge-in {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+}
+
+.tour-nudge-take {
+  padding: 4px 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+
+.tour-nudge-take strong {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.tour-nudge-x {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--brass-dim);
+  cursor: pointer;
+}
+
+.tour-nudge-x svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+@media (hover: hover) {
+  .tour-nudge-x:hover {
+    color: var(--ink);
+  }
+}
+
+/* A phone on its side. The card has to share the screen with an instrument that
+   fills it, so it gives back what it can. */
+@media (max-height: 480px) {
+  .tour-card {
+    width: min(278px, calc(100vw - 24px));
+    padding: 12px 13px 9px;
+  }
+  .tour-title {
+    font-size: 16px;
+  }
+  .tour-body {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .tour-todo {
+    margin-top: 9px;
+    padding: 6px 9px;
+  }
+  .tour-foot {
+    margin-top: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-card,
+  .tour-nudge {
+    animation: none;
+  }
+  .tour-ring,
+  .icon-btn.is-new::after {
+    animation: none;
+  }
+  .tour-card,
+  .tour-ring {
+    transition: none;
+  }
 }
