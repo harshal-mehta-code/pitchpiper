@@ -65,6 +65,20 @@ a row. Major, barbershop 7th, minor 7th and major 6th, voiced Bass / Bari /
 Lead / Tenor with the selected pitch as the bass. Each part's actual note is
 printed under the disc so you can read them out.
 
+**Just intonation.** Barbershop is sung in just intonation, not equal
+temperament, and the difference *is* the style. When every part is a whole-number
+ratio of the bass, all four voices put their overtones in exactly the same
+places, those partials add coherently instead of beating, and the chord rings —
+you hear notes nobody is singing. So that is what the pipe gives you, and what
+the tuner judges you against. The barbershop seventh sits 31 cents below where a
+piano would put it, and it is meant to; a tuner that measured you against equal
+temperament would tell a perfectly locked chord it was badly flat. Equal
+temperament is one tap away for when you're tuning to a piano.
+
+**Drone.** Latch the pitch on and leave it running while both hands are free —
+for matching a vowel, finding a chord by ear, or holding a reference while a
+section works something out. The tuner's reference button latches too.
+
 **Hall Mode.** A phone speaker against forty singers in a church basement is a
 losing fight. Hall Mode drops the lows the speaker can't produce anyway,
 saturates for upper harmonics so the ear reconstructs the missing fundamental,

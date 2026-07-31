@@ -456,6 +456,16 @@ body {
   font-size: 14px;
 }
 
+.part-ratio {
+  margin-left: 7px;
+  font-family: var(--sans);
+  font-style: normal;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--brass-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 .part-flag {
   flex: 0 0 auto;
   font-size: 9px;
@@ -629,6 +639,12 @@ body {
   align-items: center;
   flex-wrap: wrap;
   justify-content: center;
+}
+
+.tray-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .pill {

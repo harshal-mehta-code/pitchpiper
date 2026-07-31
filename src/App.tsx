@@ -35,7 +35,7 @@ import {
   type ChordTone,
 } from './music/notes'
 
-type SoundMode = 'hold' | 'breath' | 'puff'
+type SoundMode = 'hold' | 'breath' | 'puff' | 'drone'
 
 /** Which screen is up. The pipe is always where you land. */
 type View = 'pipe' | 'tune'
@@ -79,6 +79,7 @@ interface SoundParams {
   a4: number
   stack: number[]
   useFlats: boolean
+  justTuning: boolean
 }
 
 /**
@@ -92,9 +93,17 @@ function tonesFor(p: SoundParams): ChordTone[] {
   if (p.chordId === STACK_ID) {
     // An empty stack still sounds the selected note, so the hub is never dead.
     const offsets = p.stack.length ? p.stack : [PIPE_NOTES[p.noteIndex].index]
+    // A stack has no root and no chord identity, so there is nothing to tune
+    // justly *to*. Equal temperament is the honest answer there.
     return buildStack(offsets, p.octaveShift, p.a4, p.useFlats)
   }
-  return buildChord(PIPE_NOTES[p.noteIndex], chordById(p.chordId), p.octaveShift, p.a4)
+  return buildChord(
+    PIPE_NOTES[p.noteIndex],
+    chordById(p.chordId),
+    p.octaveShift,
+    p.a4,
+    p.justTuning,
+  )
 }
 
 export default function App() {
@@ -112,6 +121,9 @@ export default function App() {
   const [keepAwake, setKeepAwake] = usePersistentState('awake', true)
   const [tuneMode, setTuneMode] = usePersistentState<TuneMode>('tuneMode', 'voice')
   const [setlist, setSetlist] = usePersistentState<SetlistEntry[]>('setlist', [])
+  // Just by default. This is a barbershop instrument, and an equal-tempered
+  // chord is not the sound anyone here is trying to make.
+  const [justTuning, setJustTuning] = usePersistentState('just', true)
   const [breathResponse, setBreathResponse] = usePersistentState<BreathResponse>(
     'breathResponse',
     prefersPuffMode() ? 'puff' : 'live',
@@ -127,6 +139,8 @@ export default function App() {
   const [breathStatus, setBreathStatus] = useState<BreathStatus>('idle')
   const [breathDetail, setBreathDetail] = useState<string | undefined>()
   const [hubActive, setHubActive] = useState(false)
+  /** Latched: the chord keeps sounding with nothing held down. */
+  const [drone, setDrone] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [setlistOpen, setSetlistOpen] = useState(false)
   /** A setlist that came in on the URL and hasn't been accepted yet. */
@@ -152,8 +166,17 @@ export default function App() {
     a4,
     stack,
     useFlats,
+    justTuning,
   })
-  paramsRef.current = { noteIndex, chordId, octaveShift, a4, stack, useFlats }
+  paramsRef.current = {
+    noteIndex,
+    chordId,
+    octaveShift,
+    a4,
+    stack,
+    useFlats,
+    justTuning,
+  }
   const settingsRef = useRef({ hallMode, volume })
   settingsRef.current = { hallMode, volume }
 
@@ -162,6 +185,10 @@ export default function App() {
   breathOnRef.current = breathMode
   const responseRef = useRef(breathResponse)
   responseRef.current = breathResponse
+  const droneRef = useRef(drone)
+  droneRef.current = drone
+  /** Breath mode is toggled from further down the file than its callers. */
+  const handleBreathModeRef = useRef<(on: boolean) => void>(() => {})
   const puffTimersRef = useRef<{ end?: number; rearm?: number }>({})
   /** Whether breath mode was on when the tuner took the microphone away. */
   const breathWasOnRef = useRef(false)
@@ -219,16 +246,46 @@ export default function App() {
 
   const onHubUp = useCallback(() => {
     setHubActive(false)
-    if (soundModeRef.current === 'hold') stopSound()
+    // Letting go re-articulates the drone rather than killing it: while it is
+    // latched, the only thing that stops the sound is the latch.
+    if (soundModeRef.current !== 'hold') return
+    if (droneRef.current) {
+      startSound('drone')
+      return
+    }
+    stopSound()
     rearmBreath()
-  }, [rearmBreath, stopSound])
+  }, [rearmBreath, startSound, stopSound])
+
+  /**
+   * Latch the pitch on.
+   *
+   * Sustained tuning work — matching a vowel, finding a chord by ear, holding a
+   * reference while a section works something out — wants a drone, and a thumb
+   * held on the hub for two minutes is not that. Mutually exclusive with breath
+   * input, which would otherwise be listening to the drone.
+   */
+  const toggleDrone = useCallback(
+    (on: boolean) => {
+      setDrone(on)
+      if (on) {
+        if (breathOnRef.current) handleBreathModeRef.current(false)
+        void prepareAudio().then(() => {
+          if (droneRef.current) startSound('drone')
+        })
+      } else if (soundModeRef.current === 'drone') {
+        stopSound()
+      }
+    },
+    [prepareAudio, startSound, stopSound],
+  )
 
   // Re-voice a sounding note when the pitch under it changes, so spinning the
   // disc — or adding a note to the stack — moves the sound instead of being
   // ignored until the next press.
   useEffect(() => {
     if (soundModeRef.current) startSound(soundModeRef.current)
-  }, [noteIndex, chordId, octaveShift, a4, stack, startSound])
+  }, [noteIndex, chordId, octaveShift, a4, stack, justTuning, startSound])
 
   useEffect(() => setHallMode(hallMode), [hallMode])
   useEffect(() => setMasterVolume(volume), [volume])
@@ -376,6 +433,11 @@ export default function App() {
       setBreathMode(on)
       const det = getDetector()
       if (on) {
+        // A drone into an open microphone is the detector listening to us.
+        if (droneRef.current) {
+          setDrone(false)
+          if (soundModeRef.current === 'drone') stopSound()
+        }
         // Deliberately synchronous up to the getUserMedia call. Safari only
         // allows the microphone prompt while a user gesture is still live, and
         // awaiting the audio context first can spend that window.
@@ -398,6 +460,7 @@ export default function App() {
     },
     [clearPuffTimers, getDetector, stopSound],
   )
+  handleBreathModeRef.current = handleBreathMode
 
   /** Switching input device means tearing the stream down and asking again. */
   const handleMicDevice = useCallback(
@@ -457,6 +520,9 @@ export default function App() {
     getAudio()
     breathWasOnRef.current = breathMode
     if (breathMode) handleBreathMode(false)
+    // The tuner has its own latch, so the pipe's drone stands down rather than
+    // leaving two things that both claim to be sounding the reference.
+    setDrone(false)
     stopSound()
     setView('tune')
   }, [breathMode, handleBreathMode, stopSound, view])
@@ -547,8 +613,8 @@ export default function App() {
   // Memoised because the tuner treats a change of targets as a reason to throw
   // its readings away — a fresh array every render would reset it forever.
   const tones = useMemo(
-    () => tonesFor({ noteIndex, chordId, octaveShift, a4, stack, useFlats }),
-    [noteIndex, chordId, octaveShift, a4, stack, useFlats],
+    () => tonesFor({ noteIndex, chordId, octaveShift, a4, stack, useFlats, justTuning }),
+    [noteIndex, chordId, octaveShift, a4, stack, useFlats, justTuning],
   )
   const centerSub = isStack
     ? stack.length
@@ -570,7 +636,9 @@ export default function App() {
     [setNoteIndex],
   )
 
-  const hint = isStack
+  const hint = drone
+    ? 'Droning. Tap Drone again to stop; spin the ring to move it.'
+    : isStack
     ? 'Tap holes to stack them. Tap again for an octave up.'
     : !breathMode
       ? 'Hold the middle. Spin the ring to change note.'
@@ -674,6 +742,8 @@ export default function App() {
         onHallMode={setHallModeState}
         breathMode={breathMode}
         onBreathMode={handleBreathMode}
+        drone={drone}
+        onDrone={toggleDrone}
         onOpenSettings={() => setSettingsOpen(true)}
         compact={tuning}
         // In the tuner the same picker chooses what is listened for and what
@@ -702,6 +772,8 @@ export default function App() {
         onA4={setA4}
         useFlats={useFlats}
         onUseFlats={setUseFlats}
+        justTuning={justTuning}
+        onJustTuning={setJustTuning}
         keepAwake={keepAwake}
         onKeepAwake={setKeepAwake}
         sensitivity={sensitivity}

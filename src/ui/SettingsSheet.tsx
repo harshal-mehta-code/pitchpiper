@@ -9,6 +9,8 @@ export interface SettingsSheetProps {
   onA4: (v: number) => void
   useFlats: boolean
   onUseFlats: (v: boolean) => void
+  justTuning: boolean
+  onJustTuning: (v: boolean) => void
   keepAwake: boolean
   onKeepAwake: (v: boolean) => void
   sensitivity: number
@@ -77,6 +79,37 @@ export function SettingsSheet(props: SettingsSheetProps) {
             value={props.volume}
             onChange={(e) => props.onVolume(Number(e.target.value))}
           />
+        </Row>
+
+        <Row
+          label="Chord tuning"
+          value={props.justTuning ? 'Just' : 'Equal temperament'}
+        >
+          <div className="switch-row">
+            <button
+              className={`chip${props.justTuning ? ' is-on' : ''}`}
+              onClick={() => props.onJustTuning(true)}
+            >
+              Just
+            </button>
+            <button
+              className={`chip${!props.justTuning ? ' is-on' : ''}`}
+              onClick={() => props.onJustTuning(false)}
+            >
+              Equal
+            </button>
+          </div>
+          <p className="hint">
+            Barbershop is sung in <strong>just</strong> intonation — each part a
+            whole-number ratio of the bass. That is what makes all four voices
+            put their overtones in the same places, and it is why a locked chord
+            rings. The barbershop seventh sits a startling 31 cents below where
+            a piano would put it, and it is meant to.
+          </p>
+          <p className="hint">
+            <strong>Equal</strong> is the piano's compromise. Use it if you are
+            tuning to one, or to hear what the difference actually sounds like.
+          </p>
         </Row>
 
         <Row label="Note names" value={props.useFlats ? 'Flats' : 'Sharps'}>

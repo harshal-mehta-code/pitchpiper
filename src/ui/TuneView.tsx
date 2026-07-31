@@ -7,7 +7,7 @@ import {
   type VoiceReading,
 } from '../audio/analyzer'
 import { getAudio } from '../audio/engine'
-import { midiToLabel, type ChordTone } from '../music/notes'
+import { midiToLabel, ratioLabel, type ChordTone } from '../music/notes'
 
 /**
  * The tuner.
@@ -109,20 +109,36 @@ export function TuneView(props: TuneViewProps) {
     chordRef.current = null
   }, [mode, props.tones, props.a4])
 
-  const referenceDown = useCallback(() => {
+  /**
+   * The reference is a latch here, not a hold.
+   *
+   * On the pipe you want a moment of pitch and your thumb back; in the tuner
+   * you are matching a vowel or finding a chord by ear, and that wants a drone
+   * you can leave running while both hands are free.
+   */
+  const toggleReference = useCallback(() => {
+    if (sounding) {
+      setSounding(false)
+      props.onReferenceUp()
+      // Long enough for the release tail to die away completely.
+      analyzerRef.current?.mute(450)
+      return
+    }
     setSounding(true)
     // The reed is dead on pitch and, at arm's length, far louder than anyone
     // singing. Measuring through it would just report the app to itself.
-    analyzerRef.current?.mute(60_000)
+    analyzerRef.current?.mute(3_600_000)
     props.onReferenceDown()
-  }, [props])
+  }, [props, sounding])
 
-  const referenceUp = useCallback(() => {
-    setSounding(false)
-    props.onReferenceUp()
-    // Long enough for the release tail to die away completely.
-    analyzerRef.current?.mute(450)
-  }, [props])
+  // Leaving the tuner with the drone running would strand a sounding note.
+  useEffect(
+    () => () => {
+      props.onReferenceUp()
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
 
   const resetDrift = useCallback(() => {
     driftRef.current = { sum: 0, n: 0, since: Date.now() }
@@ -175,16 +191,10 @@ export function TuneView(props: TuneViewProps) {
 
       <button
         className={`reference${sounding ? ' is-on' : ''}`}
-        // Captured, so sliding a thumb off the button still releases the note
-        // rather than leaving it sounding forever.
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId)
-          referenceDown()
-        }}
-        onPointerUp={referenceUp}
-        onPointerCancel={referenceUp}
+        onClick={toggleReference}
+        aria-pressed={sounding}
       >
-        {sounding ? 'Listening paused' : 'Hold to hear it'}
+        {sounding ? 'Sounding — tap to stop and listen' : 'Sound it'}
       </button>
     </div>
   )
@@ -373,7 +383,12 @@ function ChordPanel({
           >
             <div className="chord-row-head">
               <span className="part-name">{t.part}</span>
-              <span className="part-note">{midiToLabel(t.midi, useFlats)}</span>
+              <span className="part-note">
+                {midiToLabel(t.midi, useFlats)}
+                {/* The ratio, so a bari reading 31 cents below the piano can
+                    see that 7/4 is exactly where they are supposed to be. */}
+                {t.ratio && <em className="part-ratio">{ratioLabel(t.ratio)}</em>}
+              </span>
               <span className="part-flag" />
               <span className="part-cents">not heard</span>
             </div>

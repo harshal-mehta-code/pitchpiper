@@ -9,6 +9,8 @@ export interface ControlTrayProps {
   onHallMode: (v: boolean) => void
   breathMode: boolean
   onBreathMode: (v: boolean) => void
+  drone: boolean
+  onDrone: (v: boolean) => void
   onOpenSettings: () => void
   /**
    * Drops the controls that only mean something while the pipe is the thing on
@@ -29,6 +31,8 @@ export function ControlTray({
   onHallMode,
   breathMode,
   onBreathMode,
+  drone,
+  onDrone,
   onOpenSettings,
   compact,
   label = 'Chord',
@@ -58,9 +62,13 @@ export function ControlTray({
         </button>
       </div>
 
+      {/* Two groups rather than five loose pills. Five will not fit across a
+          phone, and wrapping them individually strands the last one alone on a
+          second row; wrapping as groups puts the modes on one line and the
+          adjustments on the next, which reads as a decision. */}
       <div className="tray-row">
         {!compact && (
-          <>
+          <div className="tray-group">
             <button
               className={`pill${breathMode ? ' is-on' : ''}`}
               onClick={() => onBreathMode(!breathMode)}
@@ -68,6 +76,16 @@ export function ControlTray({
             >
               <MicIcon />
               <span>Breath</span>
+            </button>
+
+            <button
+              className={`pill${drone ? ' is-on' : ''}`}
+              onClick={() => onDrone(!drone)}
+              aria-pressed={drone}
+              title="Keep the pitch sounding with nothing held down"
+            >
+              <DroneIcon />
+              <span>Drone</span>
             </button>
 
             <button
@@ -79,9 +97,10 @@ export function ControlTray({
               <HallIcon />
               <span>Hall</span>
             </button>
-          </>
+          </div>
         )}
 
+        <div className="tray-group">
         <div className="pill pill-stepper" role="group" aria-label="Octave">
           <button
             onClick={() => onOctaveShift(Math.max(-1, octaveShift - 1))}
@@ -109,6 +128,7 @@ export function ControlTray({
         >
           <GearIcon />
         </button>
+        </div>
       </div>
     </div>
   )
@@ -121,6 +141,15 @@ function MicIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z" />
       <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" />
+    </svg>
+  )
+}
+
+/** A tone that just keeps going — a flat line with a wave riding on it. */
+function DroneIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2 12h3.2c1 0 1.4-5 2.6-5s1.6 10 2.7 10 1.6-8 2.7-8 1.5 3 2.4 3H22" />
     </svg>
   )
 }
