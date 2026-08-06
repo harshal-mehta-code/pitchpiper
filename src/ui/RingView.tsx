@@ -15,6 +15,12 @@ import { NeedsChord } from './NeedsChord'
 
 export interface RingViewProps {
   targets: RingTarget[]
+  /**
+   * Where the pipe put the bass. Seeds the search for where the bass actually
+   * landed — which is a different number, and the one everything is measured
+   * against.
+   */
+  rootHz: number
   chordLabel: string
   micDeviceId: string | null
   isCustom: boolean
@@ -25,6 +31,7 @@ type Phase = 'idle' | 'recording' | 'working' | 'done' | 'failed'
 
 export function RingView({
   targets,
+  rootHz,
   chordLabel,
   micDeviceId,
   isCustom,
@@ -55,10 +62,10 @@ export function RingView({
     // Out of the click handler, so the button repaints as pressed before a
     // few hundred milliseconds of arithmetic locks up the main thread.
     window.setTimeout(() => {
-      setReport(analyseRing(take, targets))
+      setReport(analyseRing(take, targets, rootHz))
       setPhase('done')
     }, 30)
-  }, [targets])
+  }, [targets, rootHz])
 
   const begin = useCallback(() => {
     setError(null)

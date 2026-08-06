@@ -46,6 +46,8 @@ export interface TuneViewProps {
   micDeviceId: string | null
   /** The chord's ideal just ratios, for the ring test. */
   ringTargets: RingTarget[]
+  /** The bass of that chord in Hz, as the pipe would sound it. */
+  rootHz: number
   /** True when the target is a hand-built stack rather than a named chord. */
   isCustom: boolean
   /** Lifted, because the tray outside this view changes with it. */
@@ -213,6 +215,7 @@ export function TuneView(props: TuneViewProps) {
       {mode === 'ring' ? (
         <RingView
           targets={props.ringTargets}
+          rootHz={props.rootHz}
           chordLabel={props.chordLabel}
           micDeviceId={props.micDeviceId}
           isCustom={props.isCustom}

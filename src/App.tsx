@@ -961,6 +961,7 @@ export default function App() {
             useFlats={useFlats}
             micDeviceId={micDeviceId}
             ringTargets={ringTargets}
+            rootHz={tones[0]?.freq ?? 0}
             isCustom={isStack}
             mode={tuneMode}
             onMode={setTuneMode}

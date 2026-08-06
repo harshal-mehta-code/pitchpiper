@@ -10,14 +10,24 @@
  * waveform and the reliable way to find its period is in the time domain, so
  * that path autocorrelates. A chord is four overlapping harmonic series and
  * nothing in the time domain will separate them, so that path works from the
- * spectrum — and leans on the fact that we already know what the chord is
- * supposed to be, which turns an unsolved problem (blind four-part
- * transcription) into a tractable one (how far is each expected pitch from
- * where it should be).
+ * spectrum, and lives in `chord.ts` — where the reasoning about collisions,
+ * drift and holding still is long enough to be worth its own file, and is
+ * shared with the ring test rather than written twice.
  */
 
 import { closeMicrophone, openMicrophone, type MicErrorKind } from './mic'
-import { centsBetween, freqToMidi } from '../music/notes'
+import { freqToMidi } from '../music/notes'
+import { NoiseFloor, type Spectrum } from './spectrum'
+import {
+  alignChord,
+  ChordTracker,
+  measureChord,
+  planChord,
+  type ChordReading,
+  type PartPlan,
+} from './chord'
+
+export { IN_TUNE_CENTS, type ChordReading, type PartReading } from './chord'
 
 export type AnalyzerStatus = 'idle' | 'requesting' | 'listening' | 'denied' | 'error'
 
@@ -33,31 +43,6 @@ export interface VoiceReading {
   /** 0..1 loudness, for the level indicator. */
   level: number
 }
-
-export interface PartReading {
-  /** Signed cents from the target, or null when that part can't be heard. */
-  cents: number | null
-  /** 0..1 how strongly this part's measurement point stands out. */
-  strength: number
-  /**
-   * True when the only place this part could be measured is also occupied by
-   * another part's harmonic — an octave doubling above all. The reading is
-   * then the two of them combined and cannot be attributed to this part alone.
-   */
-  shared: boolean
-}
-
-export interface ChordReading {
-  parts: PartReading[]
-  /** True when every part is audible and inside the in-tune window. */
-  ringing: boolean
-  level: number
-}
-
-/** Everything wider than this reads as "not this note at all". */
-const CENTS_RANGE = 50
-/** Inside this, a part is locked in. Barbershop ears are better than this. */
-export const IN_TUNE_CENTS = 6
 
 // --- single voice -----------------------------------------------------------
 
@@ -80,16 +65,14 @@ const PEAK_TOLERANCE = 0.9
 
 // --- chord ------------------------------------------------------------------
 
-/** Harmonics of each target we're willing to measure at. */
-const MAX_HARMONIC = 4
-/** Two measurement points closer than this can't be told apart. */
-const COLLISION_CENTS = 45
-/** A measurement point coarser than this can't resolve tuning usefully. */
-const MAX_BIN_CENTS = 30
-/** How far either side of a target we'll look for its peak. */
-const SEARCH_CENTS = 70
-/** Peak must stand this many dB above the local background to count. */
-const PEAK_ABOVE_FLOOR_DB = 9
+/**
+ * Highest frequency the chord path bothers converting out of the analyser.
+ *
+ * Nothing above the sixth partial of the top voice is measured, and turning
+ * eight thousand decibel readings into linear magnitudes thirty times a second
+ * to look at two thousand of them is work for nobody.
+ */
+const CHORD_MAX_HZ = 6000
 
 export interface AnalyzerTarget {
   freq: number
@@ -119,6 +102,16 @@ export class PitchAnalyzer {
 
   /** Recent frequency estimates, for rejecting one-frame octave slips. */
   private history: number[] = []
+
+  // The chord path. The spectrum is linear magnitude rather than the decibels
+  // the analyser hands out, because every threshold downstream is a ratio
+  // against the local background and ratios are what linear magnitudes are for.
+  private spectrum: Spectrum = { mag: new Float32Array(0), binHz: 1 }
+  private floor = new NoiseFloor()
+  private floorScratch: number[] = []
+  private tracker = new ChordTracker()
+  private plans: PartPlan[] = []
+  private planned: number[] = []
 
   status: AnalyzerStatus = 'idle'
 
@@ -180,7 +173,10 @@ export class PitchAnalyzer {
     // anti-aliasing filter above would flatten the upper harmonics it measures.
     const spec = context.createAnalyser()
     spec.fftSize = 16384
-    spec.smoothingTimeConstant = 0.5
+    // Light smoothing only. The window is already a third of a second long, and
+    // holding readings still is now the tracker's job, done where it can tell
+    // the difference between a part that stopped and a frame that missed.
+    spec.smoothingTimeConstant = 0.25
     this.source.connect(spec)
     this.specAnalyser = spec
 
@@ -191,6 +187,16 @@ export class PitchAnalyzer {
     this.freqBuf = new Float32Array(spec.frequencyBinCount)
     this.nsdf = new Float32Array(Math.floor(this.rate / MIN_FREQ) + 2)
     this.history = []
+
+    const binHz = context.sampleRate / spec.fftSize
+    this.spectrum = {
+      mag: new Float32Array(Math.min(spec.frequencyBinCount, Math.ceil(CHORD_MAX_HZ / binHz))),
+      binHz,
+    }
+    this.floor = new NoiseFloor(55, Math.min(CHORD_MAX_HZ, context.sampleRate / 2.2))
+    this.tracker.reset()
+    this.plans = []
+    this.planned = []
 
     this.setStatus('listening')
     this.loop()
@@ -360,142 +366,49 @@ export class PitchAnalyzer {
   // --- the whole chord ----------------------------------------------------
 
   /**
-   * How far each expected part is from where it should be.
+   * How far each part is from where it should be, relative to the chord as it
+   * is actually being sung.
    *
-   * Blind polyphonic pitch detection is a research problem. This isn't that:
-   * the chord on the pipe says exactly which frequencies *ought* to be there,
-   * so all this has to do is look in the right places and measure the offset —
-   * which is also the question a director actually has ("who's flat?").
-   *
-   * The hard part is that barbershop voicings collide with themselves. The
-   * lead's octave sits precisely on the bass's second harmonic, and the bari's
-   * fifth puts its own second harmonic on the bass's third. So each part is
-   * measured at the lowest harmonic of its own that nothing else lands on, and
-   * a part with nowhere clean to be measured is reported as shared rather than
-   * quietly attributed to one singer.
+   * The measurement itself lives in `chord.ts`; what happens here is the
+   * plumbing. The analyser hands out decibels, everything downstream wants
+   * linear magnitude against a local background, and the plan of which
+   * harmonics to measure each part at depends only on the chord's intervals —
+   * so it is worked out when the chord changes rather than thirty times a
+   * second.
    */
   private readChord() {
-    const spec = this.specAnalyser
-    if (!spec || !this.ctx) return
-    spec.getFloatFrequencyData(this.freqBuf)
+    const analyser = this.specAnalyser
+    if (!analyser || !this.ctx) return
+    analyser.getFloatFrequencyData(this.freqBuf)
 
-    const nyquist = this.ctx.sampleRate / 2
-    const binHz = nyquist / this.freqBuf.length
-    const targets = this.targets
-
-    // Background level, so a peak has to actually stand out rather than just
-    // be the largest number in a band of noise.
-    let floorSum = 0
-    let floorN = 0
-    for (let i = 1; i < this.freqBuf.length; i++) {
-      const v = this.freqBuf[i]
-      if (isFinite(v)) {
-        floorSum += v
-        floorN++
-      }
+    const mag = this.spectrum.mag
+    for (let i = 0; i < mag.length; i++) {
+      const db = this.freqBuf[i]
+      // -Infinity is a real value here: an empty bin logs to nothing.
+      mag[i] = isFinite(db) ? Math.pow(10, db / 20) : 0
     }
-    const floorDb = floorN ? floorSum / floorN : -100
+    this.floor.measure(this.spectrum, this.floorScratch)
 
-    let loudest = -Infinity
-    for (let i = 1; i < this.freqBuf.length; i++) {
-      if (this.freqBuf[i] > loudest) loudest = this.freqBuf[i]
+    const freqs = this.targets.map((t) => t.freq)
+    if (!sameFreqs(freqs, this.planned)) {
+      this.plans = planChord(freqs)
+      this.planned = freqs
+      this.tracker.reset()
     }
 
-    const parts: PartReading[] = targets.map((t, ti) => {
-      const point = this.measurementPoint(ti, binHz, nyquist)
-      const expected = t.freq * point.harmonic
-      const peak = this.findPeak(expected, binHz)
-      if (!peak || peak.db < floorDb + PEAK_ABOVE_FLOOR_DB) {
-        return { cents: null, strength: 0, shared: point.shared }
-      }
-      const cents = centsBetween(peak.freq, expected)
-      return {
-        cents: Math.max(-CENTS_RANGE, Math.min(CENTS_RANGE, cents)),
-        // Relative to the loudest thing in the spectrum, so the bar reflects
-        // whether this part is actually carrying.
-        strength: Math.max(0, Math.min(1, (peak.db - floorDb) / Math.max(1, loudest - floorDb))),
-        shared: point.shared,
-      }
-    })
-
-    const heard = parts.filter((p) => p.cents !== null)
-    const ringing =
-      heard.length === parts.length &&
-      parts.length > 0 &&
-      parts.every((p) => Math.abs(p.cents ?? 99) <= IN_TUNE_CENTS)
-
-    this.onChord({
-      parts,
-      ringing,
-      level: Math.max(0, Math.min(1, (loudest - floorDb) / 45)),
-    })
+    const alignment = alignChord(this.spectrum, freqs, this.floor, this.tracker.lastShift)
+    const measured = measureChord(this.spectrum, freqs, this.plans, this.floor, alignment)
+    this.onChord(this.tracker.update(measured, performance.now()))
   }
+}
 
-  /**
-   * Which harmonic of this target to measure at.
-   *
-   * Prefers a harmonic no other part lands on, and among those the one with
-   * enough frequency resolution to say something useful about cents — higher
-   * harmonics carry the same tuning error over more hertz, so they read more
-   * precisely. Falls back to the fundamental, marked shared, when the voicing
-   * leaves nowhere clean.
-   */
-  private measurementPoint(
-    index: number,
-    binHz: number,
-    nyquist: number,
-  ): { harmonic: number; shared: boolean } {
-    const base = this.targets[index].freq
-    let fallback: { harmonic: number; cents: number } | null = null
-
-    for (let h = 1; h <= MAX_HARMONIC; h++) {
-      const f = base * h
-      if (f > nyquist * 0.9) break
-      let clashes = false
-      for (let j = 0; j < this.targets.length && !clashes; j++) {
-        if (j === index) continue
-        for (let k = 1; k <= MAX_HARMONIC; k++) {
-          const other = this.targets[j].freq * k
-          if (Math.abs(centsBetween(other, f)) < COLLISION_CENTS) {
-            clashes = true
-            break
-          }
-        }
-      }
-      if (clashes) continue
-      const binCents = centsBetween(f + binHz, f)
-      if (binCents <= MAX_BIN_CENTS) return { harmonic: h, shared: false }
-      if (!fallback || binCents < fallback.cents) fallback = { harmonic: h, cents: binCents }
-    }
-
-    if (fallback) return { harmonic: fallback.harmonic, shared: false }
-    return { harmonic: 1, shared: true }
+/** Whether the chord under the microphone is still the same chord. */
+function sameFreqs(a: number[], b: number[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (Math.abs(a[i] - b[i]) > 1e-6) return false
   }
-
-  /** Strongest bin within a semitone-ish of `expected`, refined sub-bin. */
-  private findPeak(expected: number, binHz: number): { freq: number; db: number } | null {
-    const lo = expected * Math.pow(2, -SEARCH_CENTS / 1200)
-    const hi = expected * Math.pow(2, SEARCH_CENTS / 1200)
-    const i0 = Math.max(1, Math.floor(lo / binHz))
-    const i1 = Math.min(this.freqBuf.length - 2, Math.ceil(hi / binHz))
-    if (i1 <= i0) return null
-
-    let best = -1
-    let bestDb = -Infinity
-    for (let i = i0; i <= i1; i++) {
-      if (this.freqBuf[i] > bestDb) {
-        bestDb = this.freqBuf[i]
-        best = i
-      }
-    }
-    if (best <= 0 || !isFinite(bestDb)) return null
-
-    // Parabolic interpolation across the log-magnitude peak. On a windowed FFT
-    // this lands well inside a tenth of a bin, which is what turns 30-cent bins
-    // into a few cents of readable accuracy.
-    const delta = parabolic(this.freqBuf, best)
-    return { freq: (best + delta) * binHz, db: bestDb }
-  }
+  return true
 }
 
 function errorText(kind?: MicErrorKind): string {
@@ -506,6 +419,10 @@ function errorText(kind?: MicErrorKind): string {
 /**
  * Offset of the true peak from sample `i`, by fitting a parabola through it and
  * its neighbours. Returns 0 when the three points don't describe a peak.
+ *
+ * Linear, unlike the spectral one in `spectrum.ts`, which fits in the log
+ * domain because that is where a windowed FFT's peak is actually a parabola.
+ * This one fits the correlation function, which is already the right shape.
  */
 function parabolic(buf: Float32Array, i: number): number {
   if (i <= 0 || i >= buf.length - 1) return 0

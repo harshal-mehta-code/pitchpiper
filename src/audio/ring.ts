@@ -31,7 +31,9 @@
  * are.
  */
 
-import { FFT, frameMagnitudes, hannWindow, refinePeak } from './fft'
+import { FFT, frameMagnitudes, hannWindow } from './fft'
+import { alignChord, measureChord, planChord } from './chord'
+import { NoiseFloor, clamp01, type Spectrum } from './spectrum'
 
 export interface Recording {
   samples: Float32Array
@@ -65,6 +67,8 @@ export interface RungReading {
   freq: number
   /** Parts putting a partial here, and which partial of theirs it is. */
   parts: { part: string; partial: number }[]
+  /** How many of those parts were actually audible enough to be measured. */
+  heard: number
   /** 0..1, how much of the recording's energy sits here. */
   energy: number
   /** 0..1. High means the partials here reinforced; low means they fought. */
@@ -106,8 +110,16 @@ export interface RingReport {
   problem?: string
 }
 
-/** Analysis block length. Long, because cents matter more here than timing. */
-const BLOCK_SECONDS = 0.17
+/**
+ * Analysis block length, in seconds.
+ *
+ * Long. Cents matter more than timing here, and the two trade directly: at a
+ * tenth of a second the bins are twelve hertz apart, which is a hundred and
+ * fifty cents at the bottom of a bass's range, and no amount of interpolation
+ * recovers single-figure accuracy from that. A third of a second is still short
+ * enough that a held chord gives twenty or more readings to take a median over.
+ */
+const BLOCK_SECONDS = 0.34
 const BLOCK_HOP_SECONDS = 0.085
 /** Highest harmonic of the bass worth looking at. */
 const MAX_RUNG = 12
@@ -121,14 +133,42 @@ const MAX_RUNG = 12
  * for more the higher up the series it lands — which is exactly how it sounds.
  */
 const HALF_LOCK_HZ = 6
-/** How far either side of where a part should be we look for where it is. */
-const SEARCH_CENTS = 100
 /** Ignore rungs quieter than this fraction of the loudest. */
 const QUIET_RUNG = 0.06
+/**
+ * ...and a rung has to be at least this loud, relative to the loudest one, to
+ * be allowed to set the verdict on its own.
+ *
+ * A twelfth harmonic thirty decibels down beats just as measurably as a second
+ * one and is inaudible while doing it. Letting it decide marks down chords that
+ * unmistakably rang, which is one of the two reasons the answer used to be no
+ * whatever anyone sang.
+ */
+const AUDIBLE_RUNG = 0.12
 /** Blocks below this fraction of the take's peak are attack, release or gaps. */
 const QUIET_BLOCK = 0.25
+/** Below this there is no chord in the block, whatever its level says. */
+const MIN_CONFIDENCE = 0.16
 
-export function analyseRing(rec: Recording, targets: RingTarget[]): RingReport {
+/**
+ * @param expectedRootHz Where the pipe put the bass.
+ *
+ * Not where the bass is assumed to be — where the search starts. Finding the
+ * root by picking the lowest strong peak in the recording is the obvious
+ * approach and it is what this used to do; it fails on a phone in a hall,
+ * where the two loudest things below 200Hz are usually a handling thump and an
+ * air conditioner, and a root that is wrong by an octave or a fifth makes every
+ * rung in the report wrong and the whole chord read as though it never locked.
+ * The pipe gave out the pitch a moment ago and knows exactly what it was, so
+ * the search is seeded with it and the whole chord's shape is used to confirm
+ * it — four overlapping harmonic series in a known arrangement being a great
+ * deal of evidence about one unknown number.
+ */
+export function analyseRing(
+  rec: Recording,
+  targets: RingTarget[],
+  expectedRootHz: number,
+): RingReport {
   const { samples, sampleRate } = rec
   const duration = samples.length / sampleRate
   const empty = emptyReport(duration)
@@ -140,12 +180,15 @@ export function analyseRing(rec: Recording, targets: RingTarget[]): RingReport {
   if (peakLevel(samples) < 0.01) {
     return { ...empty, problem: 'Too quiet. Sing closer to the microphone.' }
   }
+  if (!(expectedRootHz > 0)) {
+    return { ...empty, problem: 'Nothing to listen for.' }
+  }
 
-  const size = pow2Near(sampleRate * BLOCK_SECONDS)
-  if (samples.length < size * 2) {
+  const size = pow2Round(sampleRate * BLOCK_SECONDS)
+  if (samples.length < size + 1) {
     return { ...empty, problem: 'Too short to tell anything.' }
   }
-  const hop = Math.max(128, Math.round(sampleRate * BLOCK_HOP_SECONDS))
+  const hop = Math.max(256, Math.round(sampleRate * BLOCK_HOP_SECONDS))
   const fft = new FFT(size)
   const win = hannWindow(size)
   const bins = size >> 1
@@ -154,36 +197,53 @@ export function analyseRing(rec: Recording, targets: RingTarget[]): RingReport {
   const im = new Float32Array(size)
   const mags = new Float32Array(bins)
 
+  // Where each part would sit if the chord were sung exactly where the pipe
+  // put it. Everything is measured as a departure from this shape, never from
+  // these frequencies — a quartet a semitone flat is singing the same chord.
+  const ideal = targets.map((t) => expectedRootHz * (t.num / t.den))
+  const plans = planChord(ideal)
+  const usableBins = Math.min(bins, Math.ceil(6000 / binHz))
+  const spec: Spectrum = { mag: mags.subarray(0, usableBins), binHz }
+  const floor = new NoiseFloor(55, Math.min(6000, sampleRate / 2.2))
+  const scratch: number[] = []
+
   const blockCount = Math.floor((samples.length - size) / hop) + 1
   const average = new Float32Array(bins)
   const blocks: {
     at: number
     level: number
-    root: number
+    /** Cents each part sits from its place in the chord, against the bass. */
     cents: (number | null)[]
+    /** The bass as actually sung, in Hz. */
+    root: number
+    confidence: number
     score: number
   }[] = []
 
+  let previous: number | null = null
   for (let b = 0; b < blockCount; b++) {
     const offset = b * hop
     frameMagnitudes(samples, offset, win, fft, re, im, mags)
     for (let i = 0; i < bins; i++) average[i] += mags[i]
 
-    const root = findRoot(mags, binHz)
-    const cents = targets.map((t, ti) => {
-      if (!root) return null
-      const partial = cleanPartial(targets, ti)
-      const expected = root * (t.num / t.den) * partial
-      if (expected > (sampleRate / 2) * 0.9) return null
-      const found = peakNear(mags, expected, binHz, SEARCH_CENTS)
-      return found > 0 ? 1200 * Math.log2(found / expected) / partial : null
-    })
+    floor.measure(spec, scratch)
+    const alignment = alignChord(spec, ideal, floor, previous)
+    const m = measureChord(spec, ideal, plans, floor, alignment)
+    if (alignment.confidence > MIN_CONFIDENCE) previous = m.offset
 
+    // Everything against the bass as actually sung. A chorus flat as a whole
+    // rings perfectly well, and telling them otherwise answers a question
+    // nobody asked; only disagreeing with each other costs anything. When the
+    // bass cannot be heard at all the chord's own centre stands in, which is
+    // the same idea with a less authoritative reference.
+    const bass = m.parts[0].cents
+    const reference = bass ?? 0
     blocks.push({
       at: (offset + size / 2) / sampleRate,
       level: rms(samples, offset, size),
-      root,
-      cents,
+      cents: m.parts.map((p) => (p.cents === null ? null : p.cents - reference)),
+      root: ideal[0] * Math.pow(2, (m.offset + reference) / 1200),
+      confidence: m.confidence,
       score: 0,
     })
   }
@@ -194,7 +254,9 @@ export function analyseRing(rec: Recording, targets: RingTarget[]): RingReport {
   // Only blocks where the chord is actually sounding. The attack, the release
   // and any gap in the middle would otherwise be scored as failures to ring.
   const peak = Math.max(...blocks.map((b) => b.level))
-  const usable = blocks.filter((b) => b.level > peak * QUIET_BLOCK && b.root > 0)
+  const usable = blocks.filter(
+    (b) => b.level > peak * QUIET_BLOCK && b.confidence > MIN_CONFIDENCE,
+  )
   if (usable.length < 2) {
     return { ...empty, spectrogram, problem: 'Could not hear a chord in that.' }
   }
@@ -207,7 +269,11 @@ export function analyseRing(rec: Recording, targets: RingTarget[]): RingReport {
     const vals = usable
       .map((b) => b.cents[ti])
       .filter((v): v is number => v !== null && Math.abs(v) < 150)
-    if (vals.length < 2) return { part: t.part, cents: null, steadiness: 0 }
+    // Heard in a couple of blocks out of a whole take is a consonant or a
+    // neighbour bleeding through, not a part.
+    if (vals.length < Math.max(2, usable.length * 0.35)) {
+      return { part: t.part, cents: null, steadiness: 0 }
+    }
     const mid = median(vals)
     const spread = Math.sqrt(mean(vals.map((v) => (v - mid) ** 2)))
     return { part: t.part, cents: mid, steadiness: clamp01(1 - spread / 25) }
@@ -224,8 +290,7 @@ export function analyseRing(rec: Recording, targets: RingTarget[]): RingReport {
 
   // --- score, per block then overall --------------------------------------
   for (const b of usable) {
-    const theirs = buildRungs(b.root, targets, b.cents, energies, sampleRate)
-    b.score = scoreRungs(theirs)
+    b.score = scoreRungs(buildRungs(b.root, targets, b.cents, energies, sampleRate))
   }
   const timeline = usable.map((b) => b.score / 100)
   const score = Math.round(median(usable.map((b) => b.score)))
@@ -251,6 +316,10 @@ export function analyseRing(rec: Recording, targets: RingTarget[]): RingReport {
  * tolerance is generous on purpose: an equal-tempered seventh misses rung seven
  * by 31 cents, and excluding it would quietly drop the single most interesting
  * measurement in the whole style.
+ *
+ * A part nobody could hear is left off its rungs rather than entered at zero.
+ * Entering it at zero says the silent part is exactly in tune, which turns
+ * every rung it belongs to into evidence of a lock that was never sung.
  */
 function buildRungs(
   rootHz: number,
@@ -276,11 +345,12 @@ function buildRungs(
       const partial = (n / a) * b
       if (partial > 12) return
       here.push({ part: t.part, partial })
-      // Where that partial really landed, given how the part was actually sung.
       const off = cents[ti]
-      actual.push(
-        rootHz * (t.num / t.den) * partial * Math.pow(2, (off ?? 0) / 1200),
-      )
+      if (off === null) return
+      // Where that partial really landed, given how the part was actually sung.
+      // The whole series moves together, so a voice ten cents sharp puts its
+      // fourth partial ten cents sharp too — the offset is not divided down.
+      actual.push(rootHz * (t.num / t.den) * partial * Math.pow(2, off / 1200))
     })
 
     // The widest disagreement on this rung is what you hear beating.
@@ -291,13 +361,15 @@ function buildRungs(
       }
     }
 
+    const measured = actual.length >= 2
     rungs.push({
       n,
       freq,
       parts: here,
+      heard: actual.length,
       energy: energies[n - 1] ?? 0,
-      lock: here.length >= 2 ? 1 / (1 + (spread / HALF_LOCK_HZ) ** 2) : 1,
-      beatHz: here.length >= 2 ? spread : 0,
+      lock: measured ? 1 / (1 + (spread / HALF_LOCK_HZ) ** 2) : 1,
+      beatHz: measured ? spread : 0,
     })
   }
   return rungs
@@ -308,21 +380,37 @@ function buildRungs(
  *
  * Deliberately not an average. One partial beating hard is enough to stop a
  * chord ringing — that is the entire complaint — so the weakest rung carries
- * more than half the verdict, and the average only says how close the rest of
- * it came.
+ * more than the rest of them put together, and the average only says how close
+ * the rest of it came.
+ *
+ * "Weakest" is taken among rungs loud enough to be heard, though, which is the
+ * correction that matters. A twelfth harmonic thirty decibels down beats just
+ * as measurably as a second one and is inaudible while doing it, so letting it
+ * set the verdict marks down chords that unmistakably rang — which is what
+ * happened, and why the answer was always no.
  */
 function scoreRungs(rungs: RungReading[]): number {
-  const scored = rungs.filter((r) => r.parts.length >= 2 && r.energy > QUIET_RUNG)
+  const scored = rungs.filter((r) => r.heard >= 2 && r.energy > QUIET_RUNG)
   if (!scored.length) return 0
+
   let num = 0
   let den = 0
-  let worst = 1
+  let loudest = 0
   for (const r of scored) {
     num += r.energy * r.lock
     den += r.energy
-    worst = Math.min(worst, r.lock)
+    loudest = Math.max(loudest, r.energy)
   }
   const average = den > 0 ? num / den : 0
+
+  // The worst rung anybody can actually hear. Taken in its own pass and against
+  // a fixed threshold, because deciding it as the loop goes — against whatever
+  // the worst rung so far happened to weigh — makes the verdict depend on the
+  // order the rungs are visited in, and quietly skipped the beating one.
+  let worst = 1
+  for (const r of scored) {
+    if (r.energy >= loudest * AUDIBLE_RUNG) worst = Math.min(worst, r.lock)
+  }
   return Math.round(100 * (0.45 * average + 0.55 * worst))
 }
 
@@ -350,81 +438,6 @@ function rungEnergies(
   }
   const loudest = Math.max(...out, 1e-9)
   return out.map((v) => clamp01(v / loudest))
-}
-
-/**
- * The bass, found rather than assumed.
- *
- * The lowest strong peak, not the loudest one: in a spread voicing the lead
- * singing the octave is frequently louder than the bass, and building the
- * ladder on the octave would silently halve every harmonic number in the
- * report.
- */
-function findRoot(mags: Float32Array, binHz: number): number {
-  const lo = Math.max(2, Math.floor(60 / binHz))
-  const hi = Math.min(mags.length - 2, Math.floor(500 / binHz))
-  if (hi <= lo) return 0
-  let strongest = 0
-  for (let i = lo; i <= hi; i++) strongest = Math.max(strongest, mags[i])
-  if (strongest <= 0) return 0
-
-  for (let i = lo; i <= hi; i++) {
-    if (mags[i] < strongest * 0.25) continue
-    if (mags[i] < mags[i - 1] || mags[i] < mags[i + 1]) continue
-    return (i + refinePeak(mags, i)) * binHz
-  }
-  return 0
-}
-
-/**
- * The lowest partial of one target that no other target sits on.
- *
- * Same reason the live chord tuner does this: in these voicings the lead's
- * fundamental lands exactly on the bass's second harmonic, and reporting the
- * sum of two voices as one voice's pitch would be worse than saying nothing.
- */
-function cleanPartial(targets: RingTarget[], index: number): number {
-  const own = targets[index].num / targets[index].den
-  for (let k = 1; k <= 4; k++) {
-    const at = own * k
-    let clash = false
-    for (let j = 0; j < targets.length && !clash; j++) {
-      if (j === index) continue
-      for (let m = 1; m <= 4; m++) {
-        if (Math.abs(1200 * Math.log2(((targets[j].num / targets[j].den) * m) / at)) < 45) {
-          clash = true
-          break
-        }
-      }
-    }
-    if (!clash) return k
-  }
-  return 1
-}
-
-/** Strongest bin within `cents` of `expected`, refined below bin spacing. */
-function peakNear(
-  mags: Float32Array,
-  expected: number,
-  binHz: number,
-  cents: number,
-): number {
-  const lo = Math.max(1, Math.floor((expected * Math.pow(2, -cents / 1200)) / binHz))
-  const hi = Math.min(
-    mags.length - 2,
-    Math.ceil((expected * Math.pow(2, cents / 1200)) / binHz),
-  )
-  if (hi <= lo) return 0
-  let best = -1
-  let bestVal = 0
-  for (let i = lo; i <= hi; i++) {
-    if (mags[i] > bestVal) {
-      bestVal = mags[i]
-      best = i
-    }
-  }
-  if (best < 1) return 0
-  return (best + refinePeak(mags, best)) * binHz
 }
 
 /**
@@ -561,12 +574,21 @@ export function nearestRatio(x: number, maxDen = 9): [number, number] {
   return reduce(best[0], best[1])
 }
 
-function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v
-}
-
+/** The power of two at or below `n`, for a window that must not overrun. */
 function pow2Near(n: number): number {
   let p = 256
   while (p * 2 <= n) p *= 2
   return p
+}
+
+/**
+ * The *nearest* power of two, for a window sized by the resolution it needs
+ * rather than by a length it must fit inside. Rounding down instead — which is
+ * what happened here — halves the window and doubles the bin width, and the
+ * comment above it goes on claiming a resolution the code stopped providing.
+ */
+function pow2Round(n: number): number {
+  let p = 512
+  while (p * 2 <= n * 1.4) p *= 2
+  return Math.min(32768, p)
 }
