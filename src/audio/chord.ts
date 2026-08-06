@@ -59,9 +59,19 @@ const FOREIGN_HARMONICS = 12
 const COLLISION_CENTS = 40
 /** ...and past this they no longer interfere at all. */
 const CLEAR_CENTS = 75
-/** How far the whole chord is allowed to have drifted from the pipe. */
+/**
+ * How far the whole chord is allowed to have drifted from the pipe, and how
+ * finely that range is searched.
+ *
+ * Coarse then fine. The salience at each position is measured through a window
+ * twenty-odd cents wide, so its peak is far too broad to be missed by a sweep
+ * in twelve-cent steps — and refining only around the winner costs nine more
+ * positions instead of the hundred and twenty a single fine sweep would need.
+ * This runs thirty times a second on a phone that is also drawing smoke.
+ */
 const ALIGN_RANGE_CENTS = 240
-const ALIGN_STEP_CENTS = 4
+const ALIGN_COARSE_CENTS = 12
+const ALIGN_FINE_CENTS = 3
 /** How far either side of an aligned target a part's partial may sit. */
 const PART_SEARCH_CENTS = 55
 /**
@@ -198,20 +208,42 @@ export function alignChord(
   let total = 0
   let count = 0
 
-  for (let s = -ALIGN_RANGE_CENTS; s <= ALIGN_RANGE_CENTS; s += ALIGN_STEP_CENTS) {
+  const at = (s: number): number => {
     const ratio = Math.pow(2, s / 1200)
     let score = 0
     for (const f of freqs) score += combSalience(spec, f * ratio, 5, floor)
-    total += score
-    count++
     // A gentle preference for staying put. Two positions that fit the spectrum
     // equally well are not equally likely when one of them is where the chord
     // was a thirtieth of a second ago, and without this the readout hops
     // between them and calls it measurement.
-    const sticky =
-      previous === null ? 1 : 1 + 0.06 * Math.exp(-Math.abs(s - previous) / 45)
-    if (score * sticky > bestScore) {
-      bestScore = score * sticky
+    return previous === null
+      ? score
+      : score * (1 + 0.06 * Math.exp(-Math.abs(s - previous) / 45))
+  }
+
+  for (let s = -ALIGN_RANGE_CENTS; s <= ALIGN_RANGE_CENTS; s += ALIGN_COARSE_CENTS) {
+    const score = at(s)
+    // The average is taken over the coarse sweep alone, which covers the range
+    // evenly. Folding the refinement into it would weight the neighbourhood of
+    // the winner nine times over and flatter every result.
+    total += score
+    count++
+    if (score > bestScore) {
+      bestScore = score
+      best = s
+    }
+  }
+
+  const coarse = best
+  for (
+    let s = coarse - ALIGN_COARSE_CENTS + ALIGN_FINE_CENTS;
+    s < coarse + ALIGN_COARSE_CENTS;
+    s += ALIGN_FINE_CENTS
+  ) {
+    if (Math.abs(s) > ALIGN_RANGE_CENTS) continue
+    const score = at(s)
+    if (score > bestScore) {
+      bestScore = score
       best = s
     }
   }

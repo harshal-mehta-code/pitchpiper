@@ -49,12 +49,34 @@ with a needle you can read while you're still singing. It also keeps a running
 average — the flat-drift number, which is how you find out that the chorus sagged
 fourteen cents over a run-through.
 
-*Parts* is the interesting one. Pick a chord, sing it, and
-every part gets its own meter: who's flat, who's sharp, who isn't there. The
-whole panel lights up when all four are locked in. Because the pipe already
-knows what the chord is *meant* to be, this doesn't have to solve blind
-four-part transcription — it only has to look in the right places, which is both
-tractable and the actual question a director has.
+*Parts* is the interesting one. Pick a chord, sing it, and every part gets its
+own meter: who's flat, who's sharp, who isn't there. The panel lights in
+proportion to how much of the chord is locked. Because the pipe already knows
+what the chord is *meant* to be, this doesn't have to solve blind four-part
+transcription — it only has to look in the right places, which is both tractable
+and the actual question a director has.
+
+But "the right places" are not fixed frequencies, and assuming they were is what
+made this unusable. A chorus does not sing where the pipe put the chord: the
+pitch was given twenty seconds ago, and half a semitone of collective drift over
+a verse is unremarkable. Measured against absolute pitch, every part reads as
+missing, and a chord locked perfectly to itself reads as four singers who are
+all equally wrong. So the whole expected *shape* — which is known exactly, even
+when its position is not — is slid across the spectrum until its harmonics line
+up with the ones that are there, and each part is then measured against the
+chord's own centre. Being flat as a chorus is free. Only disagreeing with each
+other costs anything, which is also the only thing anybody can act on. The
+collective drift is still reported, once, in the corner of the panel.
+
+A part that stops being heard for a frame doesn't blink out, either. A frame is
+a third of a second of evidence about people who are breathing and singing
+consonants, and deciding "heard" or "not heard" frame by frame turns that into a
+row flickering thirty times a second — not a measurement anyone can read, and
+not a fault anyone can fix. Evidence accumulates and decays, so a part has to go
+genuinely missing before it is called missing. And a part sung an octave from
+where the voicing puts it is named as that rather than reported as silence,
+because "the tenor is an octave down" is a real thing that happens in a
+rehearsal and is fixed the moment somebody says it.
 
 **The ring test.** The thing barbershop actually chases. Sing a chord at it,
 hold it, and it tells you whether the chord *rang* — and if not, who broke it.
@@ -73,9 +95,13 @@ style lives. Underneath: a score, a trace of how it held up across the take, a
 spectrogram, each part's tuning against the bass, and the recording to play
 back.
 
-Everything is measured against the bass **as you actually sang it**. A chorus
-flat as a whole rings perfectly well; only disagreeing with each other costs
-anything, and the score says so.
+Everything is measured against the bass **as you actually sang it** — found by
+starting from the pitch the pipe just gave out and confirming it against the
+whole chord's shape, rather than by taking the lowest strong peak in the
+recording, which in a rehearsal hall is a handling thump or an air conditioner.
+A root wrong by a fifth makes every rung in the report wrong. A chorus flat as a
+whole rings perfectly well; only disagreeing with each other costs anything, and
+the score says so.
 
 **Setlists, shared as a link.** The problem is unglamorous and completely real:
 the director knows the starting pitch for every song in the book, and nobody
@@ -221,7 +247,21 @@ ringer switch.
 ```bash
 npm install
 npm run dev
+npm test
 ```
+
+## Tests
+
+The tuner's whole job is the one thing that cannot be checked by running the
+app: it needs four people holding a chord, and the interesting cases are the
+ones where they are holding it slightly wrong in a way somebody has to be told
+about. So the singers are synthetic — a realistic partial rolloff, a formant,
+vibrato at a different rate per voice, and a room with more noise low down,
+where a phone in a rehearsal hall genuinely lives — and the ground truth is an
+argument. Every claim above about what the tuner does is a test: a locked chord
+sung a semitone flat still rings, one part out is the one part named, an
+equal-tempered seventh is 31 cents and says so, a silent part reads as silent
+rather than as perfect, and a part that drops out for a frame does not blink.
 
 The microphone needs a secure context, so breath input works on `localhost` and
 on any https deployment, but not over plain http to a LAN address.
@@ -303,12 +343,19 @@ by discarding spectral detail, and spectral detail is the entire question here.
 
 Two more about the tuner. Barbershop voicings collide with themselves: the
 lead's octave sits exactly on the bass's second harmonic, and the bari's fifth
-puts its own second harmonic on the bass's third. Each part is therefore
-measured at the lowest harmonic of its own that nothing else lands on — which
-usually exists, and when it doesn't the row says **shared overtone** rather than
-attributing a combined reading to one singer. And the reference tone is dead on
-pitch and far louder at the microphone than anyone singing, so holding it pauses
-the readings instead of quietly measuring the app against itself.
+puts its own second harmonic on the bass's third. There is frequently nowhere in
+the spectrum belonging to one singer alone, so rather than pick a single clean
+harmonic — which may not exist, and if it does is often too high to be worth
+finding — each part is measured at every harmonic it has, weighted by how much
+of the point belongs to it, and combined with a weighted median. A captured
+partial is not a slightly wrong reading, it is somebody else's, and a median
+throws it out where a mean would average it in. Whether a part is *present* is a
+different question and is only ever argued from points nothing else lands on: a
+shared point sounds identical whether or not the part is singing. Where a part
+has no such point anywhere, the row says **shared overtone**. And the reference
+tone is dead on pitch and far louder at the microphone than anyone singing, so
+holding it pauses the readings instead of quietly measuring the app against
+itself.
 
 ## Layout
 
@@ -317,11 +364,13 @@ src/
   audio/
     engine.ts     reed synthesis, master chain, hall mode, detent clicks
     fft.ts        radix-2 FFT, for the analysis the AnalyserNode can't do
+    spectrum.ts   noise floor, finding partials, harmonic salience
+    chord.ts      where a sung chord is, where each part sits in it, holding still
     recorder.ts   raw-sample capture, worklet with a ScriptProcessor fallback
     ring.ts       the ring test — harmonic ladder, beat rates, scoring
     mic.ts        opening a capture track, and the platform quirks in doing so
     breath.ts     microphone gate — energy + spectral flatness
-    analyzer.ts   pitch detection (autocorrelation) and per-part chord tuning
+    analyzer.ts   pitch detection (autocorrelation), and the live chord path
   music/
     notes.ts      the thirteen holes, tuning maths, barbershop voicings
     setlist.ts    saved pitches, and packing a list into a URL
@@ -334,9 +383,16 @@ src/
     Tour.tsx      the spotlight tour, and the tap on the shoulder that offers it
     SetlistSheet.tsx, ControlTray.tsx, BreathMeter.tsx, SettingsSheet.tsx
   hooks/          wake lock, persisted preferences
+test/
+  synth.ts        four synthetic singers, with vibrato, formants and a room
+  chord.test.ts   the live Parts panel
+  ring.test.ts    the ring test
 ```
 
 Everything runs client-side. No backend, no accounts, no analytics.
+
+`chord.ts` and `ring.ts` share one measurement, so the live panel and the report
+afterwards cannot disagree about who was flat.
 
 ## Controls
 
