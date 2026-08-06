@@ -46,9 +46,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
             value={props.a4}
             onChange={(e) => props.onA4(Number(e.target.value))}
           />
-          <p className="hint">
-            Plenty of choruses tune to 442. Match whatever the piano is doing.
-          </p>
+          <p className="hint">Match whatever the piano is doing.</p>
         </Row>
 
         <Row label="Volume" value={`${Math.round(props.volume * 100)}%`}>
@@ -80,16 +78,13 @@ export function SettingsSheet(props: SettingsSheetProps) {
               Equal
             </button>
           </div>
+          {/* One line. A setting that needs five to justify itself is either
+              the wrong setting or the wrong default, and a paragraph of theory
+              in a settings sheet is read by nobody and skimmed past by
+              everybody — it belongs where somebody went looking for it. */}
           <p className="hint">
-            Barbershop is sung in <strong>just</strong> intonation — each part a
-            whole-number ratio of the bass. That is what makes all four voices
-            put their overtones in the same places, and it is why a locked chord
-            rings. The barbershop seventh sits a startling 31 cents below where
-            a piano would put it, and it is meant to.
-          </p>
-          <p className="hint">
-            <strong>Equal</strong> is the piano's compromise. Use it if you are
-            tuning to one, or to hear what the difference actually sounds like.
+            Just is how barbershop is sung, and why chords ring. Equal if you
+            are tuning to a piano.
           </p>
         </Row>
 
@@ -131,17 +126,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
             </button>
           </div>
           <p className="hint">
-            <strong>Follows breath</strong> is the real thing — the pipe tracks
-            your breath as you blow, louder and brighter the harder you go.{' '}
-            <strong>One puff</strong> fires the chord and lets go of the
-            microphone so it can ring out at full volume; how hard you blow
-            still sets how loud and how long.
-          </p>
-          <p className="hint">
-            iPhones and iPads turn the volume down for as long as any app is
-            listening, and no website can override that — so <em>Follows
-            breath</em> is quiet there through the speaker, though it is fine on
-            headphones. Everywhere else, use it.
+            Follows breath tracks you as you blow. One puff fires the chord and
+            lets the microphone go, which is louder on an iPhone.
           </p>
         </Row>
 
@@ -160,9 +146,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
               ))}
             </select>
             <p className="hint">
-              Headset microphones often strip breath out as background noise
-              before we ever see it. If blowing does nothing, come back here and
-              pick the phone's own microphone.
+              If blowing does nothing, pick the phone's own microphone — headsets
+              strip breath out as noise.
             </p>
           </Row>
         )}
@@ -191,10 +176,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
           >
             Re-listen to the room
           </button>
-          <p className="hint">
-            Do this when you move somewhere noisier. Stay quiet for a second
-            while it measures.
-          </p>
+          <p className="hint">Stay quiet for a second while it measures.</p>
           {props.breathMode && <MicDiagnostics frameRef={props.breathFrameRef} />}
         </Row>
 
@@ -216,10 +198,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
             <span>Legato</span>
           </div>
           <p className="hint">
-            Nobody blows a perfectly steady stream at a phone. Turn this up and
-            the reed carries on through the gaps — a break in the breath sounds
-            like the note coasting rather than switching off. Turn it down if
-            you want it to follow every flicker.
+            How far the reed coasts through a gap in the breath.
           </p>
         </Row>
 
@@ -253,9 +232,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
         </Row>
 
         <div className="sheet-about">
-          <strong>Pitch Piper</strong> — thirteen holes, F to F, same as the
-          Kratt in your jacket pocket. Add it to your home screen and it works
-          with no signal at all.
+          <strong>Pitch Piper</strong> — thirteen holes, F to F. Add it to your
+          home screen and it works with no signal.
         </div>
 
         <button className="sheet-close" onClick={props.onClose}>

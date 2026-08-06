@@ -19,6 +19,12 @@
   --line-lit: rgba(var(--amber-rgb), 0.5);
   --wash: rgba(255, 255, 255, 0.03);
   --wash-lit: rgba(var(--amber-rgb), 0.1);
+  /* Brass with the light off it — a rung nobody is sharing, a bar with nothing
+     to say. Named because it was written out as a literal in a component. */
+  --brass-faint: rgba(217, 180, 106, 0.28);
+  /* A reading that is arriving but does not mean anything yet — sound at the
+     microphone that is not breath, a bar below its own trigger. */
+  --dead: rgba(150, 170, 160, 0.35);
 
   /* One green, one amber, one clay — used for every verdict in the app, so a
      colour always means the same thing whichever screen you read it on. These
@@ -32,8 +38,44 @@
   --good-rgb: 111, 211, 155;
   --amber-rgb: 255, 178, 60;
 
+  /*
+   * A type scale, and only these.
+   *
+   * There were seventeen sizes in here, including 8.5, 10.5, 11.5 and 12.5 —
+   * which is what a stylesheet looks like when every element was sized until it
+   * looked right on its own rather than against the others. Sizes half a pixel
+   * apart do not read as a considered distinction; they read as no system at
+   * all, and that is most of what "designed by nobody" looks like.
+   *
+   * Seven steps, each a clear jump from the last, each with a job:
+   *   engraved   the tiny tracked capitals stamped into brass
+   *   label      names of things, in rows
+   *   control    buttons and switches
+   *   body       running text
+   *   lead       the one thing on a panel that matters
+   *   figure     a reading you take in at a glance
+   *   display    the score
+   */
+  --engraved: 9px;
+  --label: 11px;
+  --control: 13px;
+  --body: 14px;
+  --lead: 17px;
+  --figure: 22px;
+  --display: 44px;
+
+  /* Spacing, on a four-pixel grid with one half-step for tight rows. */
+  --s1: 2px;
+  --s2: 4px;
+  --s3: 8px;
+  --s4: 12px;
+  --s5: 16px;
+  --s6: 24px;
+  --s7: 32px;
+
   --r-sm: 10px;
   --r-md: 14px;
+  --r-lg: 18px;
   --r-pill: 999px;
 
   /* One easing curve and two durations. Everything that moves moves alike. */
@@ -72,7 +114,7 @@
 
 html,
 body {
-  margin: 0;
+  margin: 0;;
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
@@ -98,7 +140,7 @@ body {
   height: 100vh;
   height: 100dvh;
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
-    env(safe-area-inset-bottom) env(safe-area-inset-left);
+    env(safe-area-inset-bottom) env(safe-area-inset-left);;
   background:
     radial-gradient(
       120% 90% at 50% 22%,
@@ -128,8 +170,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 12px 16px 4px;
+  gap: var(--s4);
+  padding: var(--s4) var(--s5) var(--s2);
   flex: 0 0 auto;
 }
 
@@ -139,7 +181,7 @@ body {
   overflow: hidden;
   white-space: nowrap;
   font-family: var(--serif);
-  font-size: 15px;
+  font-size: var(--lead);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--brass);
@@ -156,14 +198,14 @@ body {
    two places, one idea, and nothing new to learn on the way to the second
    screen. */
 .view-tabs {
-  padding: 3px;
+  padding: var(--s2);
 }
 
 .view-tabs .seg {
   min-width: 0;
-  padding: 6px 13px;
+  padding: var(--s3) var(--s4);
   font-family: var(--sans);
-  font-size: 12px;
+  font-size: var(--control);
   letter-spacing: 0.03em;
 }
 
@@ -171,7 +213,7 @@ body {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s3);
   /* Not `justify-content: space-between` on the bar: on a short screen the
      wordmark is dropped, and space-between with one child left the controls
      stranded against the left edge. */
@@ -229,8 +271,8 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 0 12px;
+  gap: var(--s3);
+  padding: 0 12px;;
   animation: stage-in 0.22s var(--ease);
 }
 
@@ -348,8 +390,8 @@ body {
 
 .parts {
   display: flex;
-  gap: 22px;
-  margin-top: 2px;
+  gap: var(--s6);
+  margin-top: var(--s1);
 }
 
 /* A stack can be any number of notes, so it wraps instead of running off the
@@ -357,7 +399,7 @@ body {
 .parts.is-stack {
   flex-wrap: wrap;
   justify-content: center;
-  gap: 6px;
+  gap: var(--s3);
   max-width: min(100%, 420px);
 }
 
@@ -365,7 +407,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: var(--s1);
   min-width: 42px;
 }
 
@@ -375,9 +417,9 @@ body {
 .part-chip {
   flex-direction: row;
   align-items: baseline;
-  gap: 3px;
+  gap: var(--s2);
   min-width: 0;
-  padding: 5px 8px 5px 10px;
+  padding: var(--s2) var(--s3) var(--s2) var(--s4);
   border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: var(--wash);
@@ -389,14 +431,14 @@ body {
 }
 
 .part-chip .part-note {
-  font-size: 15px;
+  font-size: var(--lead);
 }
 
 /* The affordance for the chip's one job. Choosing a note and choosing which
    octave it sits in are two decisions, so they are two controls: the hole puts
    a note in or takes it out, the chip moves it. */
 .part-oct {
-  font-size: 11px;
+  font-size: var(--label);
   line-height: 1;
   color: var(--brass-dim);
 }
@@ -420,7 +462,7 @@ body {
 }
 
 .part-name {
-  font-size: 9px;
+  font-size: var(--engraved);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--brass-dim);
@@ -428,13 +470,13 @@ body {
 
 .part-note {
   font-family: var(--serif);
-  font-size: 17px;
+  font-size: var(--lead);
   color: var(--brass);
 }
 
 .hint-line {
-  margin: 0;
-  font-size: 12px;
+  margin: 0;;
+  font-size: var(--control);
   letter-spacing: 0.04em;
   color: var(--ink-dim);
   opacity: 0.75;
@@ -446,7 +488,7 @@ body {
 
 .stage-tune {
   justify-content: flex-start;
-  padding: 10px 12px;
+  padding: var(--s4) var(--s4) var(--s3);;
   overflow-y: auto;
 }
 
@@ -454,43 +496,120 @@ body {
    an overflowing flex child instead of letting it scroll. */
 .tune {
   width: min(460px, 100%);
-  margin: auto 0;
+  margin: auto 0;;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 16px;
+  gap: var(--s4);
 }
 
 .tune-modes {
   align-self: center;
 }
 
-.tune-tagline {
-  margin: -8px 0 -4px;
-  text-align: center;
-  font-size: 11.5px;
-  letter-spacing: 0.02em;
-  color: var(--ink-dim);
-  opacity: 0.75;
-}
-
 .tune-modes .seg {
   font-family: var(--sans);
-  font-size: 12.5px;
+  font-size: var(--control);
   min-width: 0;
-  padding: 8px 16px;
+  padding: var(--s3) var(--s5);;
 }
 
-.tune-panel {
+/*
+ * The plate.
+ *
+ * Everything the tuner reports sits on one of these, and they are the reason
+ * this screen now belongs to the same object as the pipe. The readings used to
+ * float directly on the felt as a stack of rows, which is a layout, not a
+ * thing — the instrument was on one screen and a dashboard was on the other.
+ *
+ * What makes it read as metal rather than as a card is entirely the edges: a
+ * hairline of brass catching the light along the top, darkness gathering at
+ * the bottom, and the surface lifting very slightly in the middle. Three
+ * declarations, and they do more than any amount of border-radius.
+ */
+.plate {
+  position: relative;
+  padding: var(--s5) var(--s5) var(--s4);;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.045) 0%,
+      rgba(255, 255, 255, 0.012) 38%,
+      rgba(0, 0, 0, 0.16) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(244, 220, 160, 0.09),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+    0 12px 28px -18px rgba(0, 0, 0, 0.9);
+}
+
+.plate-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s4);;
+  padding-bottom: var(--s3);;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Tiny tracked capitals, the way a name is stamped into an instrument. Used
+   for every label of this kind in the app, at exactly one size. */
+.engraved {
+  font-size: var(--engraved);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--brass-dim);
+  white-space: nowrap;
+}
+
+.plate-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s5);;
+  padding-top: var(--s4);;
+  border-top: 1px solid var(--line);
+}
+
+.foot-value {
+  flex: 1 1 auto;
+  font-size: var(--control);
+  color: var(--brass);
+  font-variant-numeric: tabular-nums;
+}
+
+.foot-action {
+  flex: 0 0 auto;
+  padding: var(--s2) var(--s4);;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: inherit;
+  font-size: var(--label);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .foot-action:hover {
+    color: var(--brass);
+    border-color: var(--line-lit);
+  }
+}
+
+.voice-plate {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
+  align-items: stretch;
+  text-align: center;
 }
 
 .tune-note {
   font-family: var(--serif);
-  font-size: clamp(56px, 20vw, 96px);
+  font-size: clamp(56px, 20vw, 92px);
   line-height: 1.05;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
@@ -498,220 +617,231 @@ body {
 }
 
 .tune-cents {
-  font-size: 15px;
+  font-size: var(--lead);
   letter-spacing: 0.04em;
   color: var(--ink-dim);
   font-variant-numeric: tabular-nums;
   min-height: 1.3em;
+  margin-bottom: var(--s4);;
 }
 
 .tune-hz {
-  font-size: 11.5px;
   color: var(--ink-dim);
-  opacity: 0.7;
+  opacity: 0.75;
   font-variant-numeric: tabular-nums;
-  min-height: 1.3em;
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 
-/* The dial. A window either side of centre marks the range inside which the
-   chord actually locks — a needle you have to read a number off is no use to
-   someone singing at the same time. */
-.dial {
-  width: 100%;
-  margin-top: 6px;
-}
-
-.dial-track {
+/*
+ * The meter, milled into the plate.
+ *
+ * An inset shadow at the top and a lit edge at the bottom is the whole trick:
+ * light falls into a groove from above, so those two lines are the difference
+ * between a slot cut into metal and a dark rectangle that looks like an empty
+ * text field — which is what these were.
+ */
+.meter {
   position: relative;
   height: 34px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.32);
-  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.46), rgba(0, 0, 0, 0.26));
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.6),
+    inset 0 -1px 0 rgba(244, 220, 160, 0.07);
   overflow: hidden;
 }
 
-.dial-track.slim {
-  height: 18px;
-  border-radius: 6px;
+.meter-sm {
+  height: 20px;
+  border-radius: 7px;
 }
 
-.dial-window {
+/* The range inside which a chord actually locks. Somebody singing cannot read
+   a number off a needle, but they can see whether it is in the light. */
+.meter-window {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 44%;
   width: 12%;
-  background: rgba(var(--good-rgb), 0.13);
-  border-left: 1px solid rgba(var(--good-rgb), 0.3);
-  border-right: 1px solid rgba(var(--good-rgb), 0.3);
+  background: rgba(var(--good-rgb), 0.12);
+  box-shadow:
+    inset 1px 0 0 rgba(var(--good-rgb), 0.28),
+    inset -1px 0 0 rgba(var(--good-rgb), 0.28);
+  transition: background var(--t) var(--ease);
 }
 
-.dial-tick {
+.meter.is-locked .meter-window {
+  background: rgba(var(--good-rgb), 0.26);
+}
+
+.meter-tick {
   position: absolute;
-  top: 6px;
-  bottom: 6px;
+  top: 30%;
+  bottom: 30%;
   width: 1px;
-  background: rgba(236, 223, 194, 0.16);
+  background: rgba(217, 180, 106, 0.22);
 }
 
-.dial-tick-mid {
-  left: 50%;
+.meter-centre {
+  position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(236, 223, 194, 0.4);
+  left: 50%;
+  width: 1px;
+  background: rgba(244, 220, 160, 0.45);
 }
 
-.dial-needle {
+.meter-needle {
   position: absolute;
-  top: 2px;
-  bottom: 2px;
+  top: 3px;
+  bottom: 3px;
   left: 50%;
   width: 3px;
   margin-left: -1.5px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--ink-dim);
   box-shadow: 0 0 10px currentColor;
 }
 
-.dial.is-locked .dial-window {
-  background: rgba(var(--good-rgb), 0.24);
-}
-
-.dial-ends {
+.meter-ends {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
+  align-items: baseline;
+  gap: var(--s3);
+  margin-top: var(--s3);;
+  font-size: var(--label);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-dim);
   opacity: 0.55;
-  margin-top: 5px;
-}
-
-.drift {
-  width: 100%;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px dashed rgba(217, 180, 106, 0.16);
-  text-align: center;
-}
-
-.drift-label {
-  font-size: 9px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--brass-dim);
-  margin-bottom: 5px;
-}
-
-.drift-value {
-  font-size: 13px;
-  color: var(--brass);
-  font-variant-numeric: tabular-nums;
-}
-
-.drift-reset {
-  flex: 0 0 auto;
-  margin-top: 10px;
-  padding: 6px 14px;
-  font-size: 11.5px;
 }
 
 /* --- tuner, whole chord --------------------------------------------------- */
 
-.chord-panel {
-  width: 100%;
-  align-items: stretch;
-  border-radius: 14px;
-  padding: 12px;
-  transition: box-shadow 0.3s;
-}
-
-/* Every part inside the window at once. This is the thing you're chasing. */
-.chord-panel.is-ringing {
+/*
+ * The chord plate lights in proportion to how much of the chord is locked,
+ * rather than switching on when all of it is. `--lock` is written by the
+ * frame loop; everything visual about it is decided here.
+ */
+.chord-plate {
+  --lock: 0;
+  transition: box-shadow var(--t) var(--ease);
   box-shadow:
-    0 0 0 1px rgba(var(--good-rgb), 0.4),
-    0 0 34px rgba(var(--good-rgb), 0.22);
+    inset 0 1px 0 rgba(244, 220, 160, 0.09),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(var(--good-rgb), calc(var(--lock) * 0.35)),
+    0 0 36px -6px rgba(var(--good-rgb), calc(var(--lock) * 0.3));
 }
 
-.chord-title {
-  font-family: var(--serif);
-  font-size: 19px;
-  color: var(--brass);
-  text-align: center;
-  margin-bottom: 12px;
+.chord-offset {
+  font-size: var(--label);
+  letter-spacing: 0.03em;
+  color: var(--brass-dim);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .chord-rows {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--s4);
 }
 
-.chord-row-head {
+/*
+ * A row of gauges rather than four stacked forms.
+ *
+ * Name and note on the left, the reading on the right, the meter taking
+ * whatever is left — which is most of it, because the meter is the part being
+ * read. Laid out on a grid so the four rows line up exactly whatever is in
+ * them; a part flagged "shared overtone" must not shift the meter beside it.
+ */
+.chord-row {
+  display: grid;
+  grid-template-columns: 6.4em 1fr 3.1em;
+  align-items: center;
+  gap: var(--s3);
+  transition: opacity var(--t) var(--ease);
+}
+
+.chord-row.is-quiet {
+  opacity: 0.45;
+}
+
+.row-id {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* Name and note on one line so the caveat under them has the width of both.
+   "Shared overtone" truncated to "shared ov…" is worse than not saying it. */
+.row-what {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: var(--s2);
 }
 
-.chord-row-head .part-name {
-  flex: 0 0 auto;
-  min-width: 38px;
+.chord-row .part-name {
+  font-size: var(--label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brass);
+  white-space: nowrap;
 }
 
-.chord-row-head .part-note {
-  flex: 1 1 auto;
-  font-size: 14px;
-}
-
-.part-ratio {
-  margin-left: 7px;
-  font-family: var(--sans);
-  font-style: normal;
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
+/* The just ratio normally; a caveat when there is one to make. */
+.part-sub {
+  font-size: var(--engraved);
+  letter-spacing: 0.1em;
   color: var(--brass-dim);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.part-flag {
-  flex: 0 0 auto;
-  font-size: 9px;
-  letter-spacing: 0.12em;
+/* Tighter than the ratio it replaces: "shared overtone" is fifteen characters
+   and has to fit the same column as "7/4" without being clipped, and a caveat
+   clipped to "shared overt…" is a worse answer than the number it displaced. */
+.part-sub.is-flagged {
   text-transform: uppercase;
-  color: var(--brass-dim);
-  opacity: 0.8;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+}
+
+.chord-row .part-note {
+  font-family: var(--serif);
+  font-size: var(--body);
+  color: var(--ink);
+  white-space: nowrap;
 }
 
 .part-cents {
-  flex: 0 0 auto;
-  font-size: 12px;
+  font-size: var(--control);
   color: var(--ink-dim);
   font-variant-numeric: tabular-nums;
-}
-
-.tune-hint {
-  text-align: center;
-  margin-top: 12px;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .tune-blocked {
   text-align: center;
-  padding: 24px 8px;
-  font-size: 13px;
+  font-size: var(--control);
   color: var(--bad);
 }
 
 .reference {
   width: 100%;
-  padding: 15px;
-  border-radius: 12px;
+  padding: var(--s5);;
+  border-radius: var(--r-md);
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.04);
   color: var(--ink);
   font-family: inherit;
-  font-size: 14px;
+  font-size: var(--body);
   letter-spacing: 0.03em;
   cursor: pointer;
   touch-action: none;
@@ -737,30 +867,25 @@ body {
 
 .breath-meter {
   flex: 0 0 auto;
-  padding: 0 24px 6px;
+  padding: 0 var(--s6) var(--s3);;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--s3);
   align-items: center;
 }
 
+/* The shared level, plus the one thing only this meter has: a mark showing
+   where the trigger sits, so "nearly" and "not at all" look different. */
 .breath-bar {
   position: relative;
-  width: 100%;
   max-width: 340px;
-  height: 5px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.07);
-  overflow: hidden;
-  transition: opacity 0.2s;
+  overflow: visible;
+  transition: opacity var(--t);
 }
 
-.breath-fill {
+.breath-bar .level-fill {
   position: absolute;
   inset: 0;
-  transform-origin: left center;
-  transform: scaleX(0);
-  border-radius: 999px;
 }
 
 .breath-mark {
@@ -773,7 +898,7 @@ body {
 }
 
 .breath-status {
-  font-size: 11px;
+  font-size: var(--label);
   letter-spacing: 0.05em;
   color: var(--ink-dim);
   text-align: center;
@@ -784,7 +909,7 @@ body {
 }
 
 .breath-detail {
-  font-size: 10.5px;
+  font-size: var(--label);
   line-height: 1.45;
   text-align: center;
   color: var(--ink-dim);
@@ -806,8 +931,8 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 14px 16px calc(18px + env(safe-area-inset-bottom));
+  gap: var(--s4);
+  padding: 14px 16px calc(18px + env(safe-area-inset-bottom));;
   border-top: 1px solid var(--line);
   background: linear-gradient(
     180deg,
@@ -833,7 +958,7 @@ body {
 }
 
 .tray-label {
-  font-size: 9px;
+  font-size: var(--engraved);
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--brass-dim);
@@ -841,8 +966,8 @@ body {
 
 .segmented {
   display: flex;
-  gap: 4px;
-  padding: 4px;
+  gap: var(--s2);
+  padding: var(--s2);
   border-radius: var(--r-pill);
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid var(--line);
@@ -853,15 +978,15 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--s3);
   min-width: 46px;
-  padding: 8px 12px;
+  padding: var(--s3) var(--s4);
   border: 0;
   border-radius: var(--r-pill);
   background: transparent;
   color: var(--ink-dim);
   font-family: var(--serif);
-  font-size: 15px;
+  font-size: var(--lead);
   cursor: pointer;
   transition:
     background var(--t),
@@ -892,9 +1017,9 @@ body {
 /* Note / Chord / Custom. Words, not musical glyphs, so the sans face. */
 .seg-kind {
   min-width: 66px;
-  padding: 8px 14px;
+  padding: var(--s3) var(--s5);
   font-family: var(--sans);
-  font-size: 13px;
+  font-size: var(--control);
   letter-spacing: 0.02em;
 }
 
@@ -906,18 +1031,18 @@ body {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 5px;
+  gap: var(--s2);
   max-width: min(100%, 440px);
 }
 
 .chord-type {
-  padding: 5px 12px;
+  padding: var(--s2) var(--s4);
   border-radius: var(--r-pill);
   border: 1px solid transparent;
   background: transparent;
   color: var(--ink-dim);
   font-family: var(--serif);
-  font-size: 13.5px;
+  font-size: var(--body);
   cursor: pointer;
   transition:
     color var(--t),
@@ -958,7 +1083,7 @@ body {
 
 .tray-row {
   display: flex;
-  gap: 8px;
+  gap: var(--s3);
   align-items: center;
   flex-wrap: wrap;
   justify-content: center;
@@ -966,20 +1091,20 @@ body {
 
 .tray-group {
   display: flex;
-  gap: 8px;
+  gap: var(--s3);
   align-items: center;
 }
 
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 9px 14px;
+  gap: var(--s3);
+  padding: var(--s3) var(--s5);
   border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: var(--wash);
   color: var(--ink-dim);
-  font-size: 12.5px;
+  font-size: var(--control);
   letter-spacing: 0.03em;
   cursor: pointer;
   transition:
@@ -1022,17 +1147,17 @@ body {
 }
 
 .pill-icon {
-  padding: 9px 11px;
+  padding: var(--s3) var(--s4);
 }
 
 .pill-stepper {
-  gap: 2px;
-  padding: 4px 8px 4px 11px;
+  gap: var(--s1);
+  padding: var(--s2) var(--s3) var(--s2) var(--s4);
 }
 
 .stepper-tag {
   margin-right: 3px;
-  font-size: 9px;
+  font-size: var(--engraved);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--brass-dim);
@@ -1045,7 +1170,7 @@ body {
   border-radius: 50%;
   background: transparent;
   color: var(--ink);
-  font-size: 16px;
+  font-size: var(--lead);
   line-height: 1;
   cursor: pointer;
 }
@@ -1060,14 +1185,14 @@ body {
   text-align: center;
   font-variant-numeric: tabular-nums;
   color: var(--ink);
-  font-size: 12.5px;
+  font-size: var(--control);
 }
 
 /* The root note, steppable from inside the tuner where there is no disc. */
 .stepper-note {
   min-width: 30px;
   font-family: var(--serif);
-  font-size: 16px;
+  font-size: var(--lead);
   color: var(--brass);
 }
 
@@ -1075,7 +1200,7 @@ body {
    directly below — rather than describing a trip to another screen. */
 .needs-chord {
   text-align: center;
-  margin-top: 10px;
+  margin-top: var(--s4);
 }
 
 .needs-chord .hint {
@@ -1088,8 +1213,8 @@ body {
 }
 
 .needs-chord-arrow {
-  margin-top: 2px;
-  font-size: 17px;
+  margin-top: var(--s1);
+  font-size: var(--lead);
   color: var(--amber);
   opacity: 0.75;
   animation: nudge 1.9s var(--ease) infinite;
@@ -1148,7 +1273,7 @@ body {
 .sheet-head {
   position: relative;
   flex: 0 0 auto;
-  padding: 8px 22px 10px;
+  padding: var(--s3) var(--s6) var(--s4);
   touch-action: none;
   cursor: grab;
   user-select: none;
@@ -1188,7 +1313,7 @@ body {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 6px 22px calc(26px + env(safe-area-inset-bottom));
+  padding: 6px 22px calc(26px + env(safe-area-inset-bottom));;
 }
 
 @keyframes fade {
@@ -1209,7 +1334,7 @@ body {
   height: 4px;
   border-radius: var(--r-pill);
   background: rgba(236, 223, 194, 0.28);
-  margin: 2px auto 9px;
+  margin: 2px auto 9px;;
 }
 
 /* A sheet that slides up over the instrument should say what it is. Without
@@ -1217,30 +1342,30 @@ body {
    inferred from its contents. */
 .sheet-title {
   font-family: var(--serif);
-  font-size: 11px;
+  font-size: var(--label);
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--brass);
   text-align: center;
   opacity: 0.8;
-  margin: 0;
+  margin: 0;;
 }
 
 .sheet-section {
-  margin-top: 14px;
-  padding-bottom: 2px;
-  font-size: 9px;
+  margin-top: var(--s5);
+  padding-bottom: var(--s1);
+  font-size: var(--engraved);
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--brass-dim);
 }
 
 .sheet-section:first-of-type {
-  margin-top: 2px;
+  margin-top: var(--s1);
 }
 
 .sheet-row {
-  padding: 14px 0;
+  padding: 14px 0;;
   border-bottom: 1px solid rgba(217, 180, 106, 0.09);
 }
 
@@ -1248,16 +1373,16 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  margin-bottom: 10px;
+  margin-bottom: var(--s4);
 }
 
 .sheet-row-label {
-  font-size: 13.5px;
+  font-size: var(--body);
   color: var(--ink);
 }
 
 .sheet-row-value {
-  font-size: 12px;
+  font-size: var(--control);
   color: var(--amber);
   font-variant-numeric: tabular-nums;
 }
@@ -1274,15 +1399,15 @@ body {
 .range-ends {
   display: flex;
   justify-content: space-between;
-  font-size: 10.5px;
+  font-size: var(--label);
   color: var(--ink-dim);
   opacity: 0.7;
-  margin-top: 2px;
+  margin-top: var(--s1);
 }
 
 .hint {
-  margin: 8px 0 0;
-  font-size: 11.5px;
+  margin: 8px 0 0;;
+  font-size: var(--label);
   line-height: 1.5;
   color: var(--ink-dim);
   opacity: 0.8;
@@ -1290,17 +1415,17 @@ body {
 
 .switch-row {
   display: flex;
-  gap: 8px;
+  gap: var(--s3);
 }
 
 .chip {
   flex: 1;
-  padding: 9px 12px;
+  padding: var(--s3) var(--s4);
   border-radius: 10px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
   color: var(--ink-dim);
-  font-size: 12.5px;
+  font-size: var(--control);
   cursor: pointer;
   font-family: inherit;
 }
@@ -1313,7 +1438,7 @@ body {
 
 .chip.wide {
   width: 100%;
-  margin-top: 10px;
+  margin-top: var(--s4);
 }
 
 .chip:disabled {
@@ -1322,8 +1447,8 @@ body {
 }
 
 .sheet-about {
-  padding: 18px 0 4px;
-  font-size: 11.5px;
+  padding: 18px 0 4px;;
+  font-size: var(--label);
   line-height: 1.65;
   color: var(--ink-dim);
   opacity: 0.75;
@@ -1336,13 +1461,13 @@ body {
 
 .sheet-close {
   width: 100%;
-  margin-top: 10px;
-  padding: 13px;
+  margin-top: var(--s4);
+  padding: var(--s4);
   border: 0;
   border-radius: 12px;
   background: linear-gradient(180deg, #f0cf85, #c69a41);
   color: #2a1c05;
-  font-size: 14px;
+  font-size: var(--body);
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
@@ -1358,21 +1483,21 @@ body {
   /* The bar itself stays — losing it would take the tuner with it — but
      everything on it that is only decoration goes. */
   .topbar {
-    padding: 6px 16px 0;
+    padding: 6px 16px 0;;
   }
   .wordmark {
     display: none;
   }
   .tune {
-    gap: 10px;
+    gap: var(--s4);
   }
   .drift {
-    margin-top: 8px;
-    padding-top: 8px;
+    margin-top: var(--s3);
+    padding-top: var(--s3);
   }
   .tray {
-    padding-top: 10px;
-    gap: 8px;
+    padding-top: var(--s4);
+    gap: var(--s3);
   }
   .tray-label {
     display: none;
@@ -1388,7 +1513,7 @@ body {
     flex-wrap: wrap;
     justify-content: center;
     gap: 8px 10px;
-    padding-top: 8px;
+    padding-top: var(--s3);
   }
 }
 
@@ -1416,35 +1541,35 @@ body {
 }
 
 .diagnostics {
-  margin-top: 14px;
-  padding-top: 12px;
+  margin-top: var(--s5);
+  padding-top: var(--s4);
   border-top: 1px dashed rgba(217, 180, 106, 0.16);
 }
 
 .diagnostics-label {
-  font-size: 9px;
+  font-size: var(--engraved);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--brass-dim);
-  margin-bottom: 6px;
+  margin-bottom: var(--s3);
 }
 
 .diagnostics-values {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11.5px;
+  font-size: var(--label);
   color: var(--amber);
   font-variant-numeric: tabular-nums;
 }
 
 .select {
   width: 100%;
-  padding: 10px 12px;
+  padding: var(--s4) var(--s4);
   border-radius: 10px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.04);
   color: var(--ink);
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--control);
   appearance: none;
 }
 
@@ -1457,13 +1582,13 @@ body {
 .text-input {
   flex: 1 1 auto;
   min-width: 0;
-  padding: 10px 12px;
+  padding: var(--s4) var(--s4);
   border-radius: 10px;
   border: 1px solid var(--line);
   background: rgba(0, 0, 0, 0.28);
   color: var(--ink);
   font-family: inherit;
-  font-size: 13.5px;
+  font-size: var(--body);
 }
 
 .text-input::placeholder {
@@ -1473,28 +1598,28 @@ body {
 
 .save-row {
   display: flex;
-  gap: 8px;
+  gap: var(--s3);
   align-items: center;
 }
 
 .save-row .chip {
   flex: 0 0 auto;
-  padding: 10px 18px;
+  padding: var(--s4) var(--s5);
 }
 
 .songs {
   list-style: none;
-  margin: 6px 0 14px;
-  padding: 0;
+  margin: 6px 0 14px;;
+  padding: 0;;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--s2);
 }
 
 .song {
   display: flex;
   align-items: stretch;
-  gap: 4px;
+  gap: var(--s2);
 }
 
 .song-main {
@@ -1503,14 +1628,14 @@ body {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
-  padding: 11px 13px;
+  gap: var(--s4);
+  padding: var(--s4) var(--s4);
   border-radius: 10px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
   color: var(--ink);
   font-family: inherit;
-  font-size: 13.5px;
+  font-size: var(--body);
   text-align: left;
   cursor: pointer;
 }
@@ -1524,7 +1649,7 @@ body {
 .song-pitch {
   flex: 0 0 auto;
   font-family: var(--serif);
-  font-size: 14px;
+  font-size: var(--body);
   color: var(--brass);
 }
 
@@ -1535,7 +1660,7 @@ body {
   border: 1px solid var(--line);
   background: transparent;
   color: var(--ink-dim);
-  font-size: 15px;
+  font-size: var(--lead);
   line-height: 1;
   cursor: pointer;
 }
@@ -1546,31 +1671,31 @@ body {
 }
 
 .incoming {
-  margin-bottom: 6px;
-  padding: 14px;
+  margin-bottom: var(--s3);
+  padding: var(--s5);
   border-radius: 12px;
   border: 1px solid rgba(var(--amber-rgb), 0.4);
   background: rgba(var(--amber-rgb), 0.08);
 }
 
 .incoming-title {
-  font-size: 13px;
+  font-size: var(--control);
   color: var(--amber);
-  margin-bottom: 8px;
+  margin-bottom: var(--s3);
 }
 
 .incoming-list {
-  margin: 0 0 12px;
-  padding-left: 18px;
-  font-size: 11.5px;
+  margin: 0 0 12px;;
+  padding-left: var(--s5);
+  font-size: var(--label);
   line-height: 1.6;
   color: var(--ink-dim);
 }
 
 .share-link {
   width: 100%;
-  margin-top: 8px;
-  font-size: 11.5px;
+  margin-top: var(--s3);
+  font-size: var(--label);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -1584,20 +1709,20 @@ body {
 .ring {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--s5);
 }
 
 .ring-intro h2 {
-  margin: 0 0 8px;
+  margin: 0 0 var(--s3);;
   font-family: var(--serif);
-  font-size: 22px;
+  font-size: var(--figure);
   font-weight: 500;
   color: var(--ink);
 }
 
 .ring-intro p {
-  margin: 0 0 8px;
-  font-size: 12.5px;
+  margin: 0;;
+  font-size: var(--control);
   line-height: 1.6;
   color: var(--ink-dim);
 }
@@ -1616,43 +1741,46 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 22px 0;
+  gap: var(--s4);
   text-align: center;
 }
 
 .ring-working {
-  font-size: 13px;
+  font-size: var(--control);
   color: var(--ink-dim);
 }
 
 .ring-clock {
   font-family: var(--serif);
-  font-size: 42px;
+  font-size: var(--display);
   color: var(--amber);
   font-variant-numeric: tabular-nums;
 }
 
-.ring-meter {
+/* A level, as opposed to a meter: how much of something there is, with no
+   scale and nothing to be in the middle of. Two shapes, used consistently —
+   the app had five. */
+.level {
   width: 100%;
   height: 6px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.07);
+  border-radius: var(--r-pill);
+  background: rgba(0, 0, 0, 0.4);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
   overflow: hidden;
 }
 
-.ring-meter-fill {
+.level-fill {
   height: 100%;
   transform-origin: left center;
   transform: scaleX(0);
-  border-radius: 999px;
-  background: linear-gradient(90deg, #ffb23c, #ffd689);
+  border-radius: var(--r-pill);
+  background: linear-gradient(90deg, var(--amber), var(--brass-lit));
 }
 
 .ring-report {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--s4);
 }
 
 .ring-score {
@@ -1681,30 +1809,21 @@ body {
 }
 
 .ring-verdict {
-  margin-top: 2px;
-  font-size: 15px;
+  margin-top: var(--s1);
+  font-size: var(--lead);
   color: var(--ink);
 }
 
 .ring-blame {
-  margin-top: 4px;
-  font-size: 12px;
+  margin-top: var(--s2);
+  font-size: var(--control);
   color: var(--ink-dim);
 }
 
 .ring-trace {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-}
-
-.ring-trace-head {
-  display: flex;
-  justify-content: space-between;
-  font-size: 9px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--brass-dim);
+  gap: var(--s4);
 }
 
 .ring-timeline {
@@ -1735,7 +1854,7 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  font-size: 9px;
+  font-size: var(--engraved);
   letter-spacing: 0.08em;
   color: rgba(236, 223, 194, 0.55);
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
@@ -1743,26 +1862,16 @@ body {
 }
 
 /* The ladder: the bass's own harmonic series, highest rung at the top. */
-.ladder {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.ladder-head {
-  font-size: 9px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--brass-dim);
-  margin-bottom: 6px;
+.ladder .rung:first-of-type {
+  margin-top: calc(var(--s1) * -1);;
 }
 
 .rung {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 3px 0;
-  font-size: 11px;
+  gap: var(--s3);
+  padding: 3px 0;;
+  font-size: var(--label);
   color: var(--ink-dim);
   opacity: 0.45;
 }
@@ -1788,15 +1897,16 @@ body {
   flex: 1 1 auto;
   min-width: 0;
   height: 8px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.3);
+  border-radius: var(--r-pill);
+  background: rgba(0, 0, 0, 0.4);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
   overflow: hidden;
 }
 
 .rung-fill {
   display: block;
   height: 100%;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
 }
 
 .rung-who {
@@ -1817,28 +1927,32 @@ body {
 .ring-parts {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px 18px;
-  padding-top: 4px;
-  border-top: 1px dashed rgba(217, 180, 106, 0.16);
 }
 
 .ring-part {
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
+  gap: var(--s1);
+}
+
+.ring-part .part-name {
+  font-size: var(--label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brass);
 }
 
 .ring-part-cents {
   font-family: var(--serif);
-  font-size: 15px;
+  font-size: var(--lead);
   font-variant-numeric: tabular-nums;
   color: var(--ink-dim);
 }
 
 .ring-part-flag {
-  font-size: 8.5px;
+  font-size: var(--engraved);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--brass-dim);
@@ -1909,7 +2023,7 @@ body {
   top: 0;
   width: min(304px, calc(100vw - 24px));
   pointer-events: auto;
-  padding: 15px 15px 11px;
+  padding: var(--s5) var(--s5) var(--s4);
   border-radius: var(--r-md);
   border: 1px solid var(--line-lit);
   background: linear-gradient(180deg, #1b2d26, #0e1a15);
@@ -1928,25 +2042,25 @@ body {
   position: absolute;
   width: 1px;
   height: 1px;
-  margin: -1px;
-  padding: 0;
+  margin: -1px;;
+  padding: 0;;
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
 }
 
 .tour-title {
-  margin: 0 26px 5px 0;
+  margin: 0 26px 5px 0;;
   font-family: var(--serif);
-  font-size: 17px;
+  font-size: var(--lead);
   font-weight: 500;
   letter-spacing: 0.01em;
   color: var(--brass-lit);
 }
 
 .tour-body {
-  margin: 0;
-  font-size: 12.5px;
+  margin: 0;;
+  font-size: var(--control);
   line-height: 1.55;
   color: var(--ink-dim);
 }
@@ -1956,13 +2070,13 @@ body {
 .tour-todo {
   display: flex;
   align-items: center;
-  gap: 7px;
-  margin-top: 11px;
-  padding: 7px 10px;
+  gap: var(--s3);
+  margin-top: var(--s4);
+  padding: var(--s3) var(--s4);
   border-radius: var(--r-sm);
   border: 1px solid var(--line-lit);
   background: var(--wash-lit);
-  font-size: 12px;
+  font-size: var(--control);
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--amber);
@@ -1979,7 +2093,7 @@ body {
 }
 
 .tour-tick {
-  font-size: 13px;
+  font-size: var(--control);
   line-height: 1;
 }
 
@@ -1987,13 +2101,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-top: 13px;
+  gap: var(--s3);
+  margin-top: var(--s4);
 }
 
 .tour-dots {
   display: flex;
-  gap: 5px;
+  gap: var(--s2);
 }
 
 .tour-dot {
@@ -2019,12 +2133,12 @@ body {
 .tour-next {
   border: none;
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: var(--control);
   cursor: pointer;
 }
 
 .tour-back {
-  padding: 6px 2px;
+  padding: var(--s3) var(--s1);
   background: none;
   color: var(--brass-dim);
 }
@@ -2035,7 +2149,7 @@ body {
 }
 
 .tour-next {
-  padding: 7px 15px;
+  padding: var(--s3) var(--s5);
   border-radius: var(--r-pill);
   background: linear-gradient(180deg, #f0cf85, #c69a41);
   color: #2a1c05;
@@ -2119,8 +2233,8 @@ body {
   z-index: 12;
   display: flex;
   align-items: center;
-  gap: 1px;
-  padding: 3px 4px 3px 11px;
+  gap: var(--s1);
+  padding: var(--s2) var(--s2) var(--s2) var(--s4);
   border-radius: var(--r-pill);
   border: 1px solid var(--line-lit);
   background: linear-gradient(180deg, #1b2d26, #101d18);
@@ -2158,11 +2272,11 @@ body {
 }
 
 .tour-nudge-take {
-  padding: 4px 0;
+  padding: 4px 0;;
   border: none;
   background: none;
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--control);
   line-height: 1.35;
   text-align: left;
   color: var(--ink-dim);
@@ -2208,21 +2322,21 @@ body {
 @media (max-height: 480px) {
   .tour-card {
     width: min(278px, calc(100vw - 24px));
-    padding: 12px 13px 9px;
+    padding: var(--s4) var(--s4) var(--s3);
   }
   .tour-title {
-    font-size: 16px;
+    font-size: var(--lead);
   }
   .tour-body {
-    font-size: 12px;
+    font-size: var(--control);
     line-height: 1.5;
   }
   .tour-todo {
-    margin-top: 9px;
-    padding: 6px 9px;
+    margin-top: var(--s3);
+    padding: var(--s3) var(--s3);
   }
   .tour-foot {
-    margin-top: 10px;
+    margin-top: var(--s4);
   }
 }
 

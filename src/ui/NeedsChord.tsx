@@ -25,8 +25,7 @@ export function NeedsChord({
     return (
       <div className="needs-chord">
         <p className="hint">
-          A custom set is built by tapping holes on the pipe. Two notes is the
-          minimum — one voice has nothing to be in tune with.
+          Two notes at least — one voice has nothing to be in tune with.
         </p>
         <button className="chip wide" onClick={onGoToPipe}>
           Build it on the pipe
@@ -37,8 +36,8 @@ export function NeedsChord({
   return (
     <div className="needs-chord">
       <p className="hint">
-        Pick <strong>Chord</strong> just below and this listens to every part at
-        once. One note on its own has nothing to be in tune with.
+        Pick <strong>Chord</strong> below — one note has nothing to be in tune
+        with.
       </p>
       <div className="needs-chord-arrow" aria-hidden="true">
         ↓

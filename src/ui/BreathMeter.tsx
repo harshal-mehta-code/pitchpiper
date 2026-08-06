@@ -57,8 +57,8 @@ export function BreathMeter({
       fill.style.transform = `scaleX(${raw.toFixed(4)})`
       // Amber once we believe it's breath, cool grey when it's just sound.
       fill.style.background = f.blowing
-        ? 'linear-gradient(90deg, #ffb23c, #ffd689)'
-        : 'rgba(150, 170, 160, 0.35)'
+        ? 'linear-gradient(90deg, var(--amber), var(--brass-lit))'
+        : 'var(--dead)'
       mark.style.left = `${Math.min(98, (f.threshold / span) * 100)}%`
       bar.style.opacity = f.blowing ? '1' : '0.72'
     }
@@ -70,8 +70,8 @@ export function BreathMeter({
 
   return (
     <div className={`breath-meter${bad ? ' is-bad' : ''}`}>
-      <div className={`breath-bar${sounding ? ' is-paused' : ''}`} ref={barRef}>
-        <div className="breath-fill" ref={fillRef} />
+      <div className={`level breath-bar${sounding ? ' is-paused' : ''}`} ref={barRef}>
+        <div className="level-fill" ref={fillRef} />
         <div className="breath-mark" ref={markRef} />
       </div>
       <div className="breath-status">

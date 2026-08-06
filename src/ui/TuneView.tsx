@@ -11,6 +11,7 @@ import { RingView } from './RingView'
 import type { RingTarget } from '../audio/ring'
 import { midiToLabel, ratioLabel, type ChordTone } from '../music/notes'
 import { NeedsChord } from './NeedsChord'
+import { Meter, centsColour, formatCents } from './Meter'
 
 /**
  * The tuner.
@@ -65,11 +66,6 @@ export interface TuneViewProps {
    * instruction to navigate is not an interface.
    */
   onGoToPipe: () => void
-}
-
-const TAGLINE: Record<'voice' | 'chord', string> = {
-  voice: 'What one voice is singing, and how far off it is.',
-  chord: 'Every part of the chord at once — who is flat, who is sharp.',
 }
 
 const STATUS_TEXT: Record<AnalyzerStatus, string> = {
@@ -208,10 +204,6 @@ export function TuneView(props: TuneViewProps) {
         </button>
       </div>
 
-      {/* One line saying what this half does. Not shown for the ring test,
-          which introduces itself at length on the screen you land on. */}
-      {mode !== 'ring' && <p className="tune-tagline">{TAGLINE[mode]}</p>}
-
       {mode === 'ring' ? (
         <RingView
           targets={props.ringTargets}
@@ -222,7 +214,7 @@ export function TuneView(props: TuneViewProps) {
           onGoToPipe={props.onGoToPipe}
         />
       ) : bad ? (
-        <div className="tune-blocked">
+        <div className="plate tune-blocked">
           <p>{STATUS_TEXT[status]}</p>
           {detail && <p className="hint">{detail}</p>}
         </div>
@@ -238,7 +230,6 @@ export function TuneView(props: TuneViewProps) {
         <ChordPanel
           readingRef={chordRef}
           tones={props.tones}
-          chordLabel={props.chordLabel}
           useFlats={props.useFlats}
           paused={sounding}
           isCustom={props.isCustom}
@@ -278,10 +269,10 @@ function VoicePanel({
 }) {
   const noteRef = useRef<HTMLDivElement>(null)
   const centsRef = useRef<HTMLDivElement>(null)
-  const hzRef = useRef<HTMLDivElement>(null)
+  const hzRef = useRef<HTMLSpanElement>(null)
   const needleRef = useRef<HTMLDivElement>(null)
-  const dialRef = useRef<HTMLDivElement>(null)
-  const driftTextRef = useRef<HTMLDivElement>(null)
+  const meterRef = useRef<HTMLDivElement>(null)
+  const driftTextRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
     let raf = 0
@@ -302,16 +293,18 @@ function VoicePanel({
         centsRef.current.textContent = formatCents(r.cents)
         hzRef.current.textContent = `${r.freq.toFixed(1)} Hz`
         needleRef.current.style.left = `${50 + (shown / CENTS_RANGE) * 50}%`
+        needleRef.current.style.opacity = '1'
         const tint = centsColour(Math.abs(r.cents))
         needleRef.current.style.background = tint
         centsRef.current.style.color = tint
-        dialRef.current?.classList.toggle('is-locked', Math.abs(r.cents) <= IN_TUNE_CENTS)
+        meterRef.current?.classList.toggle('is-locked', Math.abs(r.cents) <= IN_TUNE_CENTS)
       } else {
         note.textContent = '—'
         centsRef.current.textContent = paused ? 'listening paused' : 'sing a note'
         centsRef.current.style.color = ''
         hzRef.current.textContent = ''
-        dialRef.current?.classList.remove('is-locked')
+        needleRef.current.style.opacity = '0.15'
+        meterRef.current?.classList.remove('is-locked')
       }
 
       const d = driftRef.current
@@ -319,12 +312,12 @@ function VoicePanel({
         if (d && d.n > 20) {
           const avg = d.sum / d.n
           const secs = Math.round((Date.now() - d.since) / 1000)
-          const sign = avg > 0.05 ? '+' : avg < -0.05 ? '−' : ''
+          const sign = avg > 0.05 ? '+' : avg < -0.05 ? '\u2212' : ''
           driftTextRef.current.textContent =
-            `${sign}${Math.abs(avg).toFixed(1)}¢ average over ` +
+            `${sign}${Math.abs(avg).toFixed(1)}\u00a2 over ` +
             `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`
-        } else if (driftTextRef.current) {
-          driftTextRef.current.textContent = 'keep singing to measure drift'
+        } else {
+          driftTextRef.current.textContent = 'keep singing'
         }
       }
     }
@@ -333,37 +326,30 @@ function VoicePanel({
   }, [readingRef, useFlats, driftRef, paused])
 
   return (
-    <div className="tune-panel">
+    <div className="plate voice-plate">
       <div className="tune-note" ref={noteRef}>
-        —
+        \u2014
       </div>
       <div className="tune-cents" ref={centsRef}>
         sing a note
       </div>
 
-      <div className="dial" ref={dialRef}>
-        <div className="dial-track">
-          <span className="dial-tick dial-tick-mid" />
-          <span className="dial-tick" style={{ left: '25%' }} />
-          <span className="dial-tick" style={{ left: '75%' }} />
-          <div className="dial-window" />
-          <div className="dial-needle" ref={needleRef} />
-        </div>
-        <div className="dial-ends">
-          <span>flat</span>
-          <span>sharp</span>
-        </div>
+      <Meter ref={meterRef} needleRef={needleRef} size="lg" />
+      <div className="meter-ends">
+        <span>flat</span>
+        <span className="tune-hz" ref={hzRef} />
+        <span>sharp</span>
       </div>
 
-      <div className="tune-hz" ref={hzRef} />
-
-      <div className="drift">
-        <div className="drift-label">Drift</div>
-        <div className="drift-value" ref={driftTextRef}>
-          keep singing to measure drift
-        </div>
-        <button className="chip drift-reset" onClick={onResetDrift}>
-          Start again
+      {/* Drift belongs to this panel rather than beside it: it is the same
+          measurement, averaged. A rule and a row, not a second card. */}
+      <div className="plate-foot">
+        <span className="engraved">Drift</span>
+        <span className="foot-value" ref={driftTextRef}>
+          keep singing
+        </span>
+        <button className="foot-action" onClick={onResetDrift}>
+          Reset
         </button>
       </div>
     </div>
@@ -375,7 +361,6 @@ function VoicePanel({
 function ChordPanel({
   readingRef,
   tones,
-  chordLabel,
   useFlats,
   paused,
   isCustom,
@@ -383,7 +368,6 @@ function ChordPanel({
 }: {
   readingRef: React.RefObject<ChordReading | null>
   tones: ChordTone[]
-  chordLabel: string
   useFlats: boolean
   paused: boolean
   isCustom: boolean
@@ -391,6 +375,7 @@ function ChordPanel({
 }) {
   const rowsRef = useRef<(HTMLDivElement | null)[]>([])
   const wrapRef = useRef<HTMLDivElement>(null)
+  const offsetRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
     let raf = 0
@@ -398,28 +383,63 @@ function ChordPanel({
     const frame = () => {
       raf = requestAnimationFrame(frame)
       const r = readingRef.current
+      // Proportional rather than on or off. Three parts locked and one out is
+      // most of the way to a ringing chord, and a light with two states cannot
+      // say so — it stays dark until suddenly it doesn't.
+      wrapRef.current?.style.setProperty(
+        '--lock',
+        (paused ? 0 : (r?.lock ?? 0)).toFixed(3),
+      )
       wrapRef.current?.classList.toggle('is-ringing', !!r?.ringing && !paused)
+
+      if (offsetRef.current) {
+        // The collective drift, said once and quietly. Everyone being flat
+        // together is a fact about the room, not a fault in four singers, so it
+        // is reported here rather than on all four rows at once.
+        // Two parts at least. One voice says nothing about where a chord is —
+        // it might be the part that is out.
+        const heard = r?.parts.filter((p) => p.cents !== null).length ?? 0
+        const off = r && heard >= 2 && !paused ? r.offset : 0
+        offsetRef.current.textContent =
+          Math.abs(off) >= 4
+            ? `${Math.abs(Math.round(off))}\u00a2 ${off < 0 ? 'flat' : 'sharp'} together`
+            : ''
+      }
 
       tones.forEach((_, i) => {
         const row = rowsRef.current[i]
         if (!row) return
-        const needle = row.querySelector<HTMLElement>('.dial-needle')
+        const needle = row.querySelector<HTMLElement>('.meter-needle')
         const value = row.querySelector<HTMLElement>('.part-cents')
-        if (!needle || !value) return
-        const flag = row.querySelector<HTMLElement>('.part-flag')
+        const sub = row.querySelector<HTMLElement>('.part-sub')
+        if (!needle || !value || !sub) return
         const part = r?.parts[i]
-        if (flag) {
-          // Named on the row it applies to rather than as a caveat under the
-          // whole panel, because in most voicings it applies to one part and
-          // saying it about all four would be a lie.
-          flag.textContent = part?.shared ? 'shared overtone' : ''
-        }
+
         if (paused || !part || part.cents === null) {
-          value.textContent = paused ? '—' : 'not heard'
+          row.classList.add('is-quiet')
+          value.textContent = '\u2014'
           value.style.color = ''
-          needle.style.opacity = '0.2'
+          sub.textContent = paused ? 'paused' : 'not heard'
+          sub.classList.add('is-flagged')
+          needle.style.opacity = '0.14'
+          needle.style.left = '50%'
           return
         }
+
+        row.classList.remove('is-quiet')
+        // The line under the name carries whichever of the two is worth saying.
+        // An octave error and a shared partial are both caveats on the number
+        // beside them; the just ratio only matters when there is neither.
+        const flag = part.octave
+          ? part.octave < 0
+            ? 'an octave low'
+            : 'an octave high'
+          : part.shared
+            ? 'shared overtone'
+            : ''
+        sub.textContent = flag || (sub.dataset.ratio ?? '')
+        sub.classList.toggle('is-flagged', !!flag)
+
         shown[i] += (part.cents - shown[i]) * 0.25
         needle.style.opacity = String(0.45 + 0.55 * part.strength)
         needle.style.left = `${50 + (shown[i] / CENTS_RANGE) * 50}%`
@@ -433,61 +453,46 @@ function ChordPanel({
     return () => cancelAnimationFrame(raf)
   }, [readingRef, tones, paused])
 
+  if (tones.length < 2) {
+    return (
+      <div className="plate">
+        <NeedsChord isCustom={isCustom} onGoToPipe={onGoToPipe} />
+      </div>
+    )
+  }
+
   return (
-    <div className="tune-panel chord-panel" ref={wrapRef}>
-      <div className="chord-title">{chordLabel}</div>
+    <div className="plate chord-plate" ref={wrapRef}>
+      <div className="plate-head">
+        <span className="engraved">Parts</span>
+        <span className="chord-offset" ref={offsetRef} />
+      </div>
 
       <div className="chord-rows">
         {tones.map((t, i) => (
           <div
-            className="chord-row"
+            className="chord-row is-quiet"
             key={`${t.part}-${t.midi}`}
             ref={(el) => {
               rowsRef.current[i] = el
             }}
           >
-            <div className="chord-row-head">
-              <span className="part-name">{t.part}</span>
-              <span className="part-note">
-                {midiToLabel(t.midi, useFlats)}
-                {/* The ratio, so a bari reading 31 cents below the piano can
-                    see that 7/4 is exactly where they are supposed to be. */}
-                {t.ratio && <em className="part-ratio">{ratioLabel(t.ratio)}</em>}
+            <div className="row-id">
+              <span className="row-what">
+                <span className="part-name">{t.part}</span>
+                <span className="part-note">{midiToLabel(t.midi, useFlats)}</span>
               </span>
-              <span className="part-flag" />
-              <span className="part-cents">not heard</span>
+              {/* Kept on the element too, so the loop can put the ratio back
+                  when the flag that displaced it goes away. */}
+              <span className="part-sub" data-ratio={t.ratio ? ratioLabel(t.ratio) : ''}>
+                {t.ratio ? ratioLabel(t.ratio) : ''}
+              </span>
             </div>
-            <div className="dial-track slim">
-              <span className="dial-tick dial-tick-mid" />
-              <div className="dial-window" />
-              <div className="dial-needle" />
-            </div>
+            <Meter size="sm" />
+            <span className="part-cents">\u2014</span>
           </div>
         ))}
       </div>
-
-      {tones.length < 2 ? (
-        <NeedsChord isCustom={isCustom} onGoToPipe={onGoToPipe} />
-      ) : (
-        <p className="hint tune-hint">
-          Sing it and hold. Green in the middle is locked in; the whole panel
-          lights when all of it is.
-        </p>
-      )}
     </div>
   )
-}
-
-// --- shared -----------------------------------------------------------------
-
-/** A real minus sign, and no "-0¢" for something that is simply in tune. */
-function formatCents(c: number): string {
-  const sign = c > 0.5 ? '+' : c < -0.5 ? '−' : ''
-  return `${sign}${Math.abs(Math.round(c))}¢`
-}
-
-function centsColour(abs: number): string {
-  if (abs <= IN_TUNE_CENTS) return '#6fd39b'
-  if (abs <= 18) return '#ffb23c'
-  return '#e88b6d'
 }

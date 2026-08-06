@@ -3,6 +3,7 @@ import { getAudio } from '../audio/engine'
 import { MAX_SECONDS, MIN_SECONDS, SnippetRecorder, toAudioBuffer } from '../audio/recorder'
 import { analyseRing, type Recording, type RingReport, type RingTarget } from '../audio/ring'
 import { NeedsChord } from './NeedsChord'
+import { centsColour, formatCents, lockColour } from './Meter'
 
 /**
  * The ring test: sing a chord at it, get told whether it rang and who broke it.
@@ -143,17 +144,14 @@ export function RingView({
   if (phase === 'recording') {
     return (
       <div className="ring">
-        <div className="ring-recording">
+        <div className="plate ring-recording">
           <div className="ring-clock" ref={clockRef}>
             0.0s
           </div>
-          <div className="ring-meter">
-            <div className="ring-meter-fill" ref={meterRef} />
+          <div className="level">
+            <div className="level-fill" ref={meterRef} />
           </div>
-          <p className="hint">
-            Hold the chord. A couple of seconds is plenty — it stops itself at{' '}
-            {MAX_SECONDS}.
-          </p>
+          <p className="hint">Hold the chord. It stops itself at {MAX_SECONDS}s.</p>
         </div>
         <button className="reference is-on" onClick={finish}>
           Stop and look
@@ -165,7 +163,7 @@ export function RingView({
   if (phase === 'working') {
     return (
       <div className="ring">
-        <div className="ring-working">Listening back…</div>
+        <div className="plate ring-working">Listening back…</div>
       </div>
     )
   }
@@ -177,24 +175,23 @@ export function RingView({
       )}
 
       {phase !== 'done' && (
-        <div className="ring-intro">
-          <h2>Did it ring?</h2>
-          {/* Only worth explaining once there is something to sing. Told to
-              sing a single note — or worse, told to sing the words "tap holes
-              on the pipe" — the paragraph below reads as nonsense. */}
+        <div className="plate ring-intro">
+          {/* Only worth saying once there is something to sing. Told to sing a
+              single note — or worse, told to sing the words "tap holes on the
+              pipe" — the line below reads as nonsense. */}
           {targets.length < 2 ? (
             <NeedsChord isCustom={isCustom} onGoToPipe={onGoToPipe} />
           ) : (
-            <p>
-              Sing{' '}
-              <strong>
-                {isCustom ? `all ${targets.length} notes together` : chordLabel}
-              </strong>{' '}
-              and hold it. This looks at where your overtones landed — when
-              every part is a whole-number ratio of the bass, all of you put
-              partials in the same places and the chord blooms. Miss by a few
-              cents and those same partials beat against each other instead.
-            </p>
+            <>
+              <h2>Did it ring?</h2>
+              <p>
+                Sing{' '}
+                <strong>
+                  {isCustom ? `all ${targets.length} notes together` : chordLabel}
+                </strong>{' '}
+                and hold it.
+              </p>
+            </>
           )}
           {error && <p className="ring-error">{error}</p>}
         </div>
@@ -224,7 +221,7 @@ function Report({
 }) {
   if (report.problem) {
     return (
-      <div className="ring-intro">
+      <div className="plate ring-intro">
         <p className="ring-error">{report.problem}</p>
       </div>
     )
@@ -245,27 +242,31 @@ function Report({
 
   return (
     <div className="ring-report">
-      <div className="ring-score">
+      <div className="plate ring-score">
         <div className={`ring-number ${band(report.score)}`}>{report.score}</div>
         <div className="ring-verdict">{verdict(report.score)}</div>
         {blame && <div className="ring-blame">{blame}</div>}
       </div>
 
-      <div className="ring-trace">
-        <div className="ring-trace-head">
-          <span>Ring through the take</span>
-          <span>best at {report.bestAt.toFixed(1)}s</span>
+      <div className="plate ring-trace">
+        <div className="plate-head">
+          <span className="engraved">Through the take</span>
+          <span className="chord-offset">best at {report.bestAt.toFixed(1)}s</span>
         </div>
         <Timeline values={report.timeline} />
+        <Spectrogram report={report} />
       </div>
-      <Spectrogram report={report} />
 
-      <div className="ladder">
-        <div className="ladder-head">
-          Overtones of the bass ({Math.round(report.rootHz)} Hz)
+      <div className="plate ladder">
+        <div className="plate-head">
+          <span className="engraved">Overtones of the bass</span>
+          <span className="chord-offset">{Math.round(report.rootHz)} Hz</span>
         </div>
         {shown.map((r) => {
-          const shared = r.parts.length >= 2
+          // Two parts *measured* here, not two parts nominally meeting here.
+          // A rung where one of the pair was inaudible has nothing to say about
+          // beating, and saying it anyway is how silence came to read as a lock.
+          const shared = r.heard >= 2
           return (
             <div className={`rung${shared ? ' is-shared' : ''}`} key={r.n}>
               <span className="rung-n">×{r.n}</span>
@@ -275,7 +276,7 @@ function Report({
                   className="rung-fill"
                   style={{
                     width: `${Math.round(r.energy * 100)}%`,
-                    background: shared ? lockColour(r.lock) : 'rgba(217,180,106,0.28)',
+                    background: shared ? lockColour(r.lock) : 'var(--brass-faint)',
                   }}
                 />
               </span>
@@ -294,7 +295,10 @@ function Report({
         })}
       </div>
 
-      <div className="ring-parts">
+      <div className="plate ring-parts">
+        <div className="plate-head">
+          <span className="engraved">Each part, against the bass</span>
+        </div>
         {report.parts.map((p) => (
           <div className="ring-part" key={p.part}>
             <span className="part-name">{p.part}</span>
@@ -314,11 +318,6 @@ function Report({
       <button className={`chip wide${playing ? ' is-on' : ''}`} onClick={onPlay}>
         {playing ? 'Stop' : `Hear it back (${report.duration.toFixed(1)}s)`}
       </button>
-      <p className="hint tune-hint">
-        Best moment was {report.bestAt.toFixed(1)}s in. Everything here is
-        measured against the bass as you actually sang it, so being flat as a
-        chorus costs nothing — only disagreeing with each other does.
-      </p>
     </div>
   )
 }
@@ -471,21 +470,4 @@ function band(score: number): string {
   if (score >= 85) return 'is-good'
   if (score >= 50) return 'is-mid'
   return 'is-poor'
-}
-
-function lockColour(lock: number): string {
-  if (lock > 0.8) return '#6fd39b'
-  if (lock > 0.45) return '#ffb23c'
-  return '#e88b6d'
-}
-
-function centsColour(abs: number): string {
-  if (abs <= 6) return '#6fd39b'
-  if (abs <= 18) return '#ffb23c'
-  return '#e88b6d'
-}
-
-function formatCents(c: number): string {
-  const sign = c > 0.5 ? '+' : c < -0.5 ? '−' : ''
-  return `${sign}${Math.abs(Math.round(c))}¢`
 }
