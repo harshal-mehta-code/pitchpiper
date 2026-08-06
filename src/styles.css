@@ -1926,15 +1926,25 @@ body {
 
 .ring-parts {
   display: flex;
-  flex-wrap: wrap;
+  gap: var(--s3);
 }
 
+/* Four equal columns, so the parts read as a set rather than as a sentence
+   that happened to wrap. `min-width: 0` because "not heard" is wider than the
+   share it is entitled to and would otherwise push the others out of line. */
 .ring-part {
   flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--s1);
+  text-align: center;
+}
+
+.ring-part .ring-part-cents,
+.ring-part .part-name {
+  white-space: nowrap;
 }
 
 .ring-part .part-name {
@@ -1946,7 +1956,7 @@ body {
 
 .ring-part-cents {
   font-family: var(--serif);
-  font-size: var(--lead);
+  font-size: var(--body);
   font-variant-numeric: tabular-nums;
   color: var(--ink-dim);
 }

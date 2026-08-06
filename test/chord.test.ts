@@ -176,6 +176,38 @@ test('the octave doubling in the voicing is flagged, not silently attributed', (
   assert.equal(plans[0].shared, false, 'bass has clean partials of its own')
 })
 
+test('a chord sung correctly accuses nobody of being an octave out', () => {
+  // Every even multiple of the octave below a part is exactly where that part's
+  // own partials are when it is singing the right note, so a test that looks at
+  // the whole series down there passes the moment anyone sings — and three
+  // parts singing perfectly were each told they were an octave low.
+  for (const shift of [0, -40, 70]) {
+    const m = read(sing([0, 0, 0, 20], { shift }))
+    m.parts.forEach((p, i) => {
+      assert.equal(p.octave, 0, `${PART_NAMES[i]} wrongly called an octave out at ${shift}\u00a2`)
+    })
+  }
+})
+
+test('a hum an octave below a part is not that part singing low', () => {
+  // A room mode, an amplifier buzz, a fridge — something sitting on a single
+  // low frequency that happens to be an octave under one of the parts. It puts
+  // energy exactly where a part singing an octave low would put its
+  // fundamental, and it is *not* that: a voice down there would also be sounding
+  // three and five times that frequency, and a hum sounds at one.
+  const bass = SEVENTH[0]
+  const voices: Voice[] = SEVENTH.map((f, i) => ({
+    freq: f,
+    gain: 1,
+    vibratoHz: 4.6 + i * 0.5,
+  }))
+  // Loud, steady, and with almost nothing above its own fundamental.
+  voices.push({ freq: bass / 2, gain: 0.85, harmonics: 1, vibratoCents: 0 })
+  const m = read(renderChord(voices, RATE, 1.4, { seed: 19 }))
+  assert.equal(m.parts[0].octave, 0, 'a hum was reported as the bass singing an octave low')
+  assert.notEqual(m.parts[0].cents, null, 'bass lost')
+})
+
 test('a part an octave out is named rather than reported missing', () => {
   const voices: Voice[] = [
     { freq: SEVENTH[0], gain: 1, vibratoHz: 4.6 },

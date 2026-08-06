@@ -41,6 +41,7 @@ import {
   clamp01,
   combSalience,
   findPartial,
+  salienceAt,
   weightedMedian,
   type NoiseFloor,
   type Spectrum,
@@ -369,17 +370,32 @@ export function measureChord(
 
     // A whole series, not one bump. Between the partials of a chord the local
     // background is measured across a narrow band of nothing, so an ordinary
-    // noise peak stands well clear of it and reads as a confident partial —
-    // which is how a part nobody was singing got reported an octave down. Four
-    // harmonics agreeing is not something noise does.
-    const singing = (at: number) =>
-      combSalience(spec, at, 4, floor) >= OCTAVE_SALIENCE
-        ? findPartial(spec, at, PART_SEARCH_CENTS, floor)
-        : null
-
+    // noise peak stands well clear of it and reads as a confident partial.
+    //
+    // Which multiples get counted is the whole question. A voice singing an
+    // octave low puts partials at f/2, 3f/2, 5f/2 and so on; a voice singing
+    // the right note puts them at f, 2f, 3f. The two sets share every even
+    // multiple of f/2 — so counting the series at f/2 wholesale asks a question
+    // that answers itself the moment the part sings at all, which is exactly
+    // what it did: three parts singing perfectly were each accused of being an
+    // octave down. Only the odd multiples tell the two apart.
+    // And a series means more than one rung of it. A room mode, an amplifier
+    // buzz or a fridge sits on a single low frequency, and if that frequency
+    // happens to be an octave under somebody it will carry any test that only
+    // adds energy up — a hum is loud at f/2 and silent at 3f/2, which is
+    // precisely how it differs from a person.
+    const odd = [1, 3, 5].filter((m) => clear((aligned / 2) * m))
     const below = aligned / 2
-    if (clear(below)) {
-      const found = singing(below)
+    if (odd.includes(1) && odd.length >= 2) {
+      // At the ordinary bar for a partial, not the permissive one salience
+      // normally uses: counting rungs of a series is a question about whether
+      // they are there, and between two partials an unremarkable noise peak
+      // clears a permissive bar as a matter of course.
+      const there = salienceAt(spec, below, odd, floor, 22, MIN_PROMINENCE)
+      const found =
+        there.salience >= OCTAVE_SALIENCE && there.present >= 2
+          ? findPartial(spec, below, PART_SEARCH_CENTS, floor)
+          : null
       if (found && found.prominence > OCTAVE_PROMINENCE) {
         raw[i] = {
           off: cents(found.freq, below),
@@ -390,10 +406,15 @@ export function measureChord(
       }
     }
 
+    // Upwards is the opposite case and needs the opposite test. A part sung an
+    // octave up has no partial of its own left at the note it was meant to
+    // sing, so it is found by being missing from there — and then by a series
+    // an octave above that nothing else in the chord accounts for.
     if (raw[i].off !== null) return
     const above = aligned * 2
     if (!clear(above)) return
-    const found = singing(above)
+    if (combSalience(spec, above, 4, floor) < OCTAVE_SALIENCE) return
+    const found = findPartial(spec, above, PART_SEARCH_CENTS, floor)
     if (!found || found.prominence < OCTAVE_PROMINENCE) return
     raw[i] = {
       off: cents(found.freq, above),

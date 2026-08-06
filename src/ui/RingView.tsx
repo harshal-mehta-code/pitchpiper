@@ -295,24 +295,28 @@ function Report({
         })}
       </div>
 
-      <div className="plate ring-parts">
+      <div className="plate">
         <div className="plate-head">
           <span className="engraved">Each part, against the bass</span>
         </div>
-        {report.parts.map((p) => (
-          <div className="ring-part" key={p.part}>
-            <span className="part-name">{p.part}</span>
-            <span
-              className="ring-part-cents"
-              style={{ color: p.cents === null ? undefined : centsColour(Math.abs(p.cents)) }}
-            >
-              {p.cents === null ? 'not heard' : formatCents(p.cents)}
-            </span>
-            {p.cents !== null && p.steadiness < 0.55 && (
-              <span className="ring-part-flag">wandering</span>
-            )}
-          </div>
-        ))}
+        <div className="ring-parts">
+          {report.parts.map((p) => (
+            <div className="ring-part" key={p.part}>
+              <span className="part-name">{p.part}</span>
+              <span
+                className="ring-part-cents"
+                style={{
+                  color: p.cents === null ? undefined : centsColour(Math.abs(p.cents)),
+                }}
+              >
+                {p.cents === null ? 'not heard' : formatCents(p.cents)}
+              </span>
+              {p.cents !== null && p.steadiness < 0.55 && (
+                <span className="ring-part-flag">wandering</span>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
 
       <button className={`chip wide${playing ? ' is-on' : ''}`} onClick={onPlay}>

@@ -143,17 +143,48 @@ export function combSalience(
   floor: NoiseFloor,
   tolerance = 22,
 ): number {
-  let sum = 0
-  for (let h = 1; h <= harmonics; h++) {
+  const multiples: number[] = []
+  for (let h = 1; h <= harmonics; h++) multiples.push(h)
+  return salienceAt(spec, root, multiples, floor, tolerance).salience
+}
+
+/**
+ * The same, over a chosen set of multiples rather than the first few.
+ *
+ * Which multiples you look at decides what the answer means. Asking whether
+ * somebody is singing an octave below where they should be cannot be answered
+ * by looking at the whole series there, because half of that series — every
+ * even multiple — is exactly where their partials are if they are singing the
+ * right note. Only the odd multiples of the octave below distinguish the two,
+ * and only those should be counted.
+ */
+export function salienceAt(
+  spec: Spectrum,
+  root: number,
+  multiples: number[],
+  floor: NoiseFloor,
+  tolerance = 22,
+  /** How convincing a partial has to be to be counted at all. */
+  minProminence = 1.6,
+): { salience: number; present: number } {
+  const top = spec.mag.length * spec.binHz * 0.92
+  let salience = 0
+  // How many of the asked-for multiples are actually there, kept separately.
+  // One very loud partial can carry the sum on its own, and sometimes the
+  // question is not "how much energy" but "is this a series at all" — a hum and
+  // a voice differ by the second answer, not the first.
+  let present = 0
+  for (const h of multiples) {
     const f = root * h
-    if (f > spec.mag.length * spec.binHz * 0.92) break
+    if (f > top) continue
     const p = findPartial(spec, f, tolerance, floor)
-    if (!p || p.prominence < 1.6) continue
+    if (!p || p.prominence < minProminence) continue
     // 1/h: the upper partials of a voice are genuinely quieter, so they get a
     // vote proportional to how much they were ever going to contribute.
-    sum += Math.sqrt(p.prominence) / h
+    salience += Math.sqrt(p.prominence) / h
+    present++
   }
-  return sum
+  return { salience, present }
 }
 
 /** Signed cents from `target` to `freq`. */
