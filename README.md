@@ -323,6 +323,52 @@ be rid of a screenful of drifting weather. The breath meter still reports what
 the microphone hears either way. It is measured under software rasterisation,
 where the whole app holds one frame per vsync.
 
+**What a phone does to all this.** The suspicion that the handset is the
+problem is a reasonable one, so it is tested rather than argued about: the
+synthetic singers are put through a rehearsal hall, a preamp being driven by
+forty people at arm's length, a capsule that cannot hear a bass, and the gain
+control you are left with when a device refuses a raw capture. Ground truth
+survives the trip, which is exactly what a real recording could not have given —
+nobody knows what a quartet on a wax cylinder was actually tuned to.
+
+Most of it turns out not to matter. A hall changes every partial's *level* and
+none of their frequencies. Band-limiting and capsule hiss cost nothing. Gain
+control pumps the level and leaves the pitch alone.
+
+One of them matters a great deal and is the reason the design is what it is: a
+phone cannot hear a bass. The port and the capsule roll off steeply below a
+couple of hundred hertz, which is above the fundamental of every bass note this
+pipe gives out — C3 is 131Hz. Through a 260Hz rolloff the bass's own fundamental
+arrives about 24dB down on its second harmonic. Any scheme that measures a part
+at its fundamental is measuring the quietest thing in the room, which is why
+each part is measured across every harmonic it has and weighted, and why the
+bass is still read to within a few cents when its fundamental is barely present.
+
+And one is a genuine limit, pinned by a test that is expected to fail the day
+somebody solves it. A saturating preamp makes energy at sums and differences of
+everything present, and in a *justly tuned* chord those combinations are the
+chord: twice the bari's harmonic seventh less the bass is 2 × 7/4 − 1 = 5/2,
+which is the tenor's note exactly. The arithmetic that makes a just chord ring
+is the arithmetic a nonlinearity runs, so distortion fills in a part nobody is
+singing, at precisely the right pitch, with a harmonic series of its own, and
+reports it as perfectly in tune. It takes under half a percent of distortion,
+which a handset in front of a loud chorus comfortably produces. This is not a
+peak picker that could be sharpened — the energy is really there, at really that
+frequency. Telling the two apart needs a different kind of evidence entirely: an
+intermodulation product's pitch wobbles with the *sum* of the vibrato of the
+voices that made it, where a singer's wobbles on its own. That is a real signal
+and a research problem, and it is not done here.
+
+The practical version of that: if a part is silent and the microphone is being
+driven hard, the tuner will claim that part is present and in tune. Backing the
+phone off is the fix, and it is the same thing that makes everything else in
+here more accurate.
+
+One more, found while looking: the microphone is asked for raw — no gain
+control, no noise suppression — but the request is a ladder, and its lower rungs
+drop those flags rather than fail. On a device that refuses the raw constraints
+the whole app gets processed audio and nothing downstream is told.
+
 Known limits, honestly: iOS has no vibration API, so detents there are audible
 but not tactile. Bluetooth headset microphones run their own noise suppression
 that strips breath before the page ever sees it — the input picker lets you
@@ -385,8 +431,10 @@ src/
   hooks/          wake lock, persisted preferences
 test/
   synth.ts        four synthetic singers, with vibrato, formants and a room
+  phone.ts        a hall, a driven preamp, a capsule that cannot hear a bass
   chord.test.ts   the live Parts panel
   ring.test.ts    the ring test
+  phone.test.ts   all of the above, through a handset
 ```
 
 Everything runs client-side. No backend, no accounts, no analytics.

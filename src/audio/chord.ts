@@ -103,6 +103,26 @@ const PRESENCE_FLOOR = 0.14
  */
 const OCTAVE_SALIENCE = 4
 const OCTAVE_PROMINENCE = 6
+/**
+ * ...and how strong the octave below has to be relative to the note the part
+ * was expected on.
+ *
+ * A phone preamp with forty singers in front of it saturates, and a saturating
+ * nonlinearity applied to a chord makes energy at sums and differences of
+ * everything present. The lead's octave minus the tenor's third is exactly the
+ * bass's octave below, so a hard-driven microphone manufactures a whole series
+ * down there and the bass gets accused of singing low. Prominence does not
+ * catch it — the invented partial stands fifteen times clear of a background
+ * that is nearly nothing.
+ *
+ * What catches it is that these products are forty to sixty decibels below the
+ * partials that made them, and a voice singing an octave low is putting its
+ * *fundamental* there against its own second harmonic. A fundamental is never
+ * thirty decibels below its own second harmonic. Measured through a phone the
+ * two cases sit three orders of magnitude apart, which is a comfortable place
+ * to put a threshold.
+ */
+const OCTAVE_FUNDAMENTAL_RATIO = 0.25
 
 // --- what to measure where --------------------------------------------------
 
@@ -384,9 +404,14 @@ export function measureChord(
     // happens to be an octave under somebody it will carry any test that only
     // adds energy up — a hum is loud at f/2 and silent at 3f/2, which is
     // precisely how it differs from a person.
+    // Only for a part that is plainly there. "It looks fine but is an octave
+    // low" is a claim about a part being heard in the wrong place, so there has
+    // to be a part being heard; where the expected note holds nothing but the
+    // preamp's own intermodulation, both octaves hold the same whisper and
+    // comparing them says nothing. Nothing to reassign means not heard.
     const odd = [1, 3, 5].filter((m) => clear((aligned / 2) * m))
     const below = aligned / 2
-    if (odd.includes(1) && odd.length >= 2) {
+    if (raw[i].off !== null && odd.includes(1) && odd.length >= 2) {
       // At the ordinary bar for a partial, not the permissive one salience
       // normally uses: counting rungs of a series is a question about whether
       // they are there, and between two partials an unremarkable noise peak
@@ -396,7 +421,16 @@ export function measureChord(
         there.salience >= OCTAVE_SALIENCE && there.present >= 2
           ? findPartial(spec, below, PART_SEARCH_CENTS, floor)
           : null
-      if (found && found.prominence > OCTAVE_PROMINENCE) {
+      // Against the part's own place, where an octave-low voice is putting its
+      // second harmonic. Absent that, nobody is singing an octave low either —
+      // a voice down there would be sounding twice its fundamental as well.
+      const own = found ? findPartial(spec, aligned, PART_SEARCH_CENTS, floor) : null
+      if (
+        found &&
+        own &&
+        found.prominence > OCTAVE_PROMINENCE &&
+        found.mag >= own.mag * OCTAVE_FUNDAMENTAL_RATIO
+      ) {
         raw[i] = {
           off: cents(found.freq, below),
           strength: clamp01(Math.log2(found.prominence) / 4),
