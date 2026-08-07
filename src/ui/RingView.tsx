@@ -243,19 +243,18 @@ function Report({
 
   return (
     <div className="ring-report">
+      {/* The answer, in the words somebody would use out loud.
+          There was a 0-100 score here in forty-four point type. A number invites
+          you to improve the number, and four seconds of four people is not
+          accurate to a point — "close, nearly locked" is both the honest
+          resolution of this measurement and what a director would actually say.
+          The score still decides which sentence this is; it just stopped being
+          the sentence. */}
       <div className="plate ring-score">
-        <div className={`ring-number ${band(report.score)}`}>{report.score}</div>
-        <div className="ring-verdict">{verdict(report.score)}</div>
-        {blame && <div className="ring-blame">{blame}</div>}
-      </div>
-
-      <div className="plate ring-trace">
-        <div className="plate-head">
-          <span className="engraved">Through the take</span>
-          <span className="chord-offset">best at {report.bestAt.toFixed(1)}s</span>
+        <div className={`ring-verdict ${band(report.score)}`}>
+          {verdict(report.score)}
         </div>
-        <Timeline values={report.timeline} />
-        <Spectrogram report={report} />
+        {blame && <div className="ring-blame">{blame}</div>}
       </div>
 
       <div className="plate ladder">
@@ -325,142 +324,6 @@ function Report({
       </button>
     </div>
   )
-}
-
-/** How the ring held up across the take. */
-function Timeline({ values }: { values: number[] }) {
-  const ref = useRef<HTMLCanvasElement>(null)
-  useEffect(() => {
-    const canvas = ref.current
-    if (!canvas || values.length < 2) return
-    const dpr = Math.min(window.devicePixelRatio || 1, 2.5)
-    const w = canvas.clientWidth
-    const h = canvas.clientHeight
-    canvas.width = w * dpr
-    canvas.height = h * dpr
-    const g = canvas.getContext('2d')!
-    g.scale(dpr, dpr)
-    g.clearRect(0, 0, w, h)
-
-    // Halfway line, so a trace low in the box reads as low rather than as
-    // wherever the drawing happened to start.
-    g.setLineDash([3, 4])
-    g.strokeStyle = 'rgba(236, 223, 194, 0.14)'
-    g.lineWidth = 1
-    g.beginPath()
-    g.moveTo(0, h / 2)
-    g.lineTo(w, h / 2)
-    g.stroke()
-    g.setLineDash([])
-
-    g.beginPath()
-    values.forEach((v, i) => {
-      const x = (i / (values.length - 1)) * w
-      const y = h - v * h
-      if (i === 0) g.moveTo(x, y)
-      else g.lineTo(x, y)
-    })
-    g.lineTo(w, h)
-    g.lineTo(0, h)
-    g.closePath()
-    const fill = g.createLinearGradient(0, 0, 0, h)
-    fill.addColorStop(0, 'rgba(111, 211, 155, 0.35)')
-    fill.addColorStop(1, 'rgba(111, 211, 155, 0.02)')
-    g.fillStyle = fill
-    g.fill()
-
-    g.beginPath()
-    values.forEach((v, i) => {
-      const x = (i / (values.length - 1)) * w
-      const y = h - v * h
-      if (i === 0) g.moveTo(x, y)
-      else g.lineTo(x, y)
-    })
-    g.strokeStyle = 'rgba(140, 230, 180, 0.9)'
-    g.lineWidth = 1.5
-    g.stroke()
-  }, [values])
-
-  if (values.length < 2) return null
-  return <canvas className="ring-timeline" ref={ref} aria-hidden="true" />
-}
-
-/**
- * The take as a picture, in the app's own colours rather than a rainbow.
- *
- * Log frequency, so the harmonic series reads as a stack of evenly thinning
- * lines instead of everything interesting crammed into the bottom eighth.
- */
-function Spectrogram({ report }: { report: RingReport }) {
-  const ref = useRef<HTMLCanvasElement>(null)
-  const { spectrogram: s } = report
-
-  useEffect(() => {
-    const canvas = ref.current
-    if (!canvas || !s.cols || !s.rows) return
-    const off = document.createElement('canvas')
-    off.width = s.cols
-    off.height = s.rows
-    const og = off.getContext('2d')!
-    const img = og.createImageData(s.cols, s.rows)
-
-    for (let r = 0; r < s.rows; r++) {
-      // Bottom row of the image is the lowest frequency.
-      const src = (s.rows - 1 - r) * s.cols
-      for (let c = 0; c < s.cols; c++) {
-        const [red, green, blue] = heat(s.data[src + c])
-        const i = (r * s.cols + c) * 4
-        img.data[i] = red
-        img.data[i + 1] = green
-        img.data[i + 2] = blue
-        img.data[i + 3] = 255
-      }
-    }
-    og.putImageData(img, 0, 0)
-
-    const dpr = Math.min(window.devicePixelRatio || 1, 2.5)
-    canvas.width = canvas.clientWidth * dpr
-    canvas.height = canvas.clientHeight * dpr
-    const g = canvas.getContext('2d')!
-    g.imageSmoothingEnabled = true
-    g.drawImage(off, 0, 0, canvas.width, canvas.height)
-  }, [s])
-
-  if (!s.cols) return null
-  return (
-    <div className="spectro">
-      <canvas ref={ref} aria-label="Spectrogram of the recording" />
-      <div className="spectro-scale">
-        <span>{s.maxHz} Hz</span>
-        <span>{s.minHz} Hz</span>
-      </div>
-    </div>
-  )
-}
-
-// --- small stuff -----------------------------------------------------------
-
-/** Felt, through brass, to hot amber. */
-function heat(v: number): [number, number, number] {
-  const stops: [number, [number, number, number]][] = [
-    [0, [8, 18, 15]],
-    [0.35, [64, 48, 18]],
-    [0.62, [186, 128, 40]],
-    [0.85, [255, 186, 78]],
-    [1, [255, 246, 214]],
-  ]
-  for (let i = 1; i < stops.length; i++) {
-    if (v > stops[i][0] && i < stops.length - 1) continue
-    const [p0, c0] = stops[i - 1]
-    const [p1, c1] = stops[i]
-    const t = Math.max(0, Math.min(1, (v - p0) / (p1 - p0)))
-    return [
-      Math.round(c0[0] + (c1[0] - c0[0]) * t),
-      Math.round(c0[1] + (c1[1] - c0[1]) * t),
-      Math.round(c0[2] + (c1[2] - c0[2]) * t),
-    ]
-  }
-  return [255, 246, 214]
 }
 
 function verdict(score: number): string {

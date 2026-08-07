@@ -85,27 +85,13 @@ export interface PartSummary {
   steadiness: number
 }
 
-export interface Spectrogram {
-  cols: number
-  rows: number
-  /** Row-major, 0..1, lowest frequency first. */
-  data: Float32Array
-  minHz: number
-  maxHz: number
-}
-
 export interface RingReport {
   /** 0..100. */
   score: number
   rootHz: number
   rungs: RungReading[]
   parts: PartSummary[]
-  /** Ring quality through the take, 0..1, for the trace under the score. */
-  timeline: number[]
-  spectrogram: Spectrogram
   duration: number
-  /** Seconds into the recording where it rang best. */
-  bestAt: number
   /** Set when there wasn't enough to analyse; nothing else is meaningful then. */
   problem?: string
 }
@@ -249,8 +235,6 @@ export function analyseRing(
   }
   for (let i = 0; i < bins; i++) average[i] /= blockCount
 
-  const spectrogram = buildSpectrogram(samples, sampleRate)
-
   // Only blocks where the chord is actually sounding. The attack, the release
   // and any gap in the middle would otherwise be scored as failures to ring.
   const peak = Math.max(...blocks.map((b) => b.level))
@@ -258,7 +242,7 @@ export function analyseRing(
     (b) => b.level > peak * QUIET_BLOCK && b.confidence > MIN_CONFIDENCE,
   )
   if (usable.length < 2) {
-    return { ...empty, spectrogram, problem: 'Could not hear a chord in that.' }
+    return { ...empty, problem: 'Could not hear a chord in that.' }
   }
 
   const rootHz = median(usable.map((b) => b.root))
@@ -292,19 +276,9 @@ export function analyseRing(
   for (const b of usable) {
     b.score = scoreRungs(buildRungs(b.root, targets, b.cents, energies, sampleRate))
   }
-  const timeline = usable.map((b) => b.score / 100)
   const score = Math.round(median(usable.map((b) => b.score)))
 
-  let bestAt = usable[0].at
-  let best = -1
-  for (const b of usable) {
-    if (b.score > best) {
-      best = b.score
-      bestAt = b.at
-    }
-  }
-
-  return { score, rootHz, rungs, parts, timeline, spectrogram, duration, bestAt }
+  return { score, rootHz, rungs, parts, duration }
 }
 
 // ---------------------------------------------------------------------------
@@ -446,55 +420,6 @@ function rungEnergies(
  * Log rather than linear because the harmonic series is the thing being looked
  * at, and on a linear axis all of it is squashed into the bottom eighth.
  */
-function buildSpectrogram(samples: Float32Array, sampleRate: number): Spectrogram {
-  const size = pow2Near(sampleRate * 0.03)
-  const rows = 96
-  const cols = 200
-  const minHz = 70
-  const maxHz = 4200
-  const data = new Float32Array(rows * cols)
-  if (samples.length < size * 2) {
-    return { cols: 0, rows: 0, data: new Float32Array(0), minHz, maxHz }
-  }
-
-  const fft = new FFT(size)
-  const win = hannWindow(size)
-  const bins = size >> 1
-  const binHz = sampleRate / size
-  const re = new Float32Array(size)
-  const im = new Float32Array(size)
-  const mags = new Float32Array(bins)
-  const span = Math.log(maxHz / minHz)
-
-  // Precompute which bins each row covers, rather than per column.
-  const bands: [number, number][] = []
-  for (let r = 0; r < rows; r++) {
-    const f0 = minHz * Math.exp((r / rows) * span)
-    const f1 = minHz * Math.exp(((r + 1) / rows) * span)
-    const i0 = Math.max(1, Math.floor(f0 / binHz))
-    bands.push([i0, Math.max(i0, Math.min(bins - 1, Math.ceil(f1 / binHz)))])
-  }
-
-  let loudest = 1e-9
-  const step = Math.max(1, (samples.length - size) / cols)
-  for (let c = 0; c < cols; c++) {
-    frameMagnitudes(samples, Math.floor(c * step), win, fft, re, im, mags)
-    for (let r = 0; r < rows; r++) {
-      const [i0, i1] = bands[r]
-      let v = 0
-      for (let i = i0; i <= i1; i++) v = Math.max(v, mags[i])
-      data[r * cols + c] = v
-      loudest = Math.max(loudest, v)
-    }
-  }
-
-  // To dB over a 55dB range — enough to show the harmonics without the noise
-  // floor filling the picture with mud.
-  for (let i = 0; i < data.length; i++) {
-    data[i] = clamp01((20 * Math.log10(Math.max(data[i], 1e-9) / loudest) + 55) / 55)
-  }
-  return { cols, rows, data, minHz, maxHz }
-}
 
 // --- small helpers ---------------------------------------------------------
 
@@ -504,10 +429,7 @@ function emptyReport(duration: number): RingReport {
     rootHz: 0,
     rungs: [],
     parts: [],
-    timeline: [],
-    spectrogram: { cols: 0, rows: 0, data: new Float32Array(0), minHz: 70, maxHz: 4200 },
     duration,
-    bestAt: 0,
   }
 }
 
@@ -575,11 +497,6 @@ export function nearestRatio(x: number, maxDen = 9): [number, number] {
 }
 
 /** The power of two at or below `n`, for a window that must not overrun. */
-function pow2Near(n: number): number {
-  let p = 256
-  while (p * 2 <= n) p *= 2
-  return p
-}
 
 /**
  * The *nearest* power of two, for a window sized by the resolution it needs

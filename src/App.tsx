@@ -147,7 +147,11 @@ export default function App() {
   const [sensitivity, setSensitivity] = usePersistentState('sensitivity', 0.65)
   const [smoothing, setSmoothing] = usePersistentState('breathSmoothing', 0.45)
   const [keepAwake, setKeepAwake] = usePersistentState('awake', true)
-  const [tuneMode, setTuneMode] = usePersistentState<TuneMode>('tuneMode', 'voice')
+  // Anyone who used the app before the tuner started following the room has
+  // 'voice' or 'chord' sitting in local storage. Both mean "the listening
+  // screen" now, and neither should come back as a mode that no longer exists.
+  const [storedTuneMode, setTuneMode] = usePersistentState<TuneMode>('tuneMode', 'listen')
+  const tuneMode: TuneMode = storedTuneMode === 'ring' ? 'ring' : 'listen'
   const [setlist, setSetlist] = usePersistentState<SetlistEntry[]>('setlist', [])
   // Just by default. This is a barbershop instrument, and an equal-tempered
   // chord is not the sound anyone here is trying to make.
@@ -1052,10 +1056,11 @@ export default function App() {
         compact={tuning}
         noteLabel={centerLabel}
         onNoteStep={stepNote}
-        // In the tuner the same picker chooses what is listened for and what
-        // the reference button gives you — which of those it is depends on
-        // which half of the tuner is up.
-        label={tuning ? (tuneMode === 'voice' ? 'Reference' : 'Listening for') : 'Give'}
+        // In the tuner the same picker chooses what is listened for. It used
+        // to say "Reference" in the voice half, back when that was a mode you
+        // picked; the panel now follows the room, so the picker's job no longer
+        // changes underneath the label.
+        label={tuning ? 'Listening for' : 'Give'}
       />
 
       <SetlistSheet
@@ -1090,7 +1095,6 @@ export default function App() {
         onRecalibrate={() => detectorRef.current?.recalibrate()}
         volume={volume}
         onVolume={setVolume}
-        breathFrameRef={breathFrameRef}
         breathResponse={breathResponse}
         onBreathResponse={setBreathResponse}
         micInputs={micInputs}

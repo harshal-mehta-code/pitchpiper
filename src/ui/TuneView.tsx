@@ -30,13 +30,82 @@ import { MIC_TEXT } from './micText'
  */
 
 /**
- * Named for what you are looking at, not for what is sounding.
+ * Two things you can do here, not three.
  *
- * The middle one was "Chord" until the tray below it also grew a "Chord" — two
- * controls a thumb apart, same word, different jobs. "Parts" is what it
- * actually shows, and it is what a director would say out loud.
+ * This was Voice / Parts / Ring, and the first two were the same question at
+ * two scales: how far off is what I am hearing. Which one you wanted was never
+ * a preference — it was a fact about how many people were singing, and the
+ * analyser already knows that, with hysteresis, because it has to. Asking the
+ * user to declare it was the app making its own internal split somebody else's
+ * decision.
+ *
+ * So: one screen that listens. One voice gets the big note and the needle; a
+ * chord gets the four rows. Ring stays separate because it genuinely is a
+ * different act — you record, then you read, and it takes the microphone to
+ * itself.
  */
-export type TuneMode = 'voice' | 'chord' | 'ring'
+export type TuneMode = 'listen' | 'ring'
+
+/**
+ * How long the room has to agree before the panel changes shape.
+ *
+ * Asymmetric on purpose. A chorus coming in should be met quickly — that is the
+ * moment you are looking at the screen for. A chorus going quiet must not be,
+ * because the gap between two phrases is a breath, not the end of the chord,
+ * and a layout that collapses every time everyone inhales is worse than the
+ * mode switch this replaces.
+ */
+const TO_CHORD_MS = 700
+const TO_VOICE_MS = 2500
+
+/**
+ * Which panel the room is asking for.
+ *
+ * Runs off the same ref the panels do, so nothing here re-renders at frame
+ * rate: state is set only on an actual change of shape, which is a few times a
+ * rehearsal rather than thirty times a second.
+ */
+function useHeardShape(
+  chordRef: React.RefObject<ChordReading | null>,
+  enabled: boolean,
+  paused: boolean,
+): 'voice' | 'chord' {
+  const [shape, setShape] = useState<'voice' | 'chord'>('voice')
+
+  useEffect(() => {
+    if (!enabled) {
+      setShape('voice')
+      return
+    }
+    let raf = 0
+    // When the count first disagreed with what is on screen. The clock only
+    // starts on disagreement, so a flicker back resets it rather than banking
+    // progress towards a switch.
+    let since = 0
+    const frame = () => {
+      raf = requestAnimationFrame(frame)
+      const r = chordRef.current
+      const heard = paused ? 0 : (r?.parts.filter((p) => p.cents !== null).length ?? 0)
+      const wants = heard >= 2 ? 'chord' : 'voice'
+      setShape((was) => {
+        if (wants === was) {
+          since = 0
+          return was
+        }
+        const now = performance.now()
+        if (!since) since = now
+        const held = now - since
+        if (held < (wants === 'chord' ? TO_CHORD_MS : TO_VOICE_MS)) return was
+        since = 0
+        return wants
+      })
+    }
+    raf = requestAnimationFrame(frame)
+    return () => cancelAnimationFrame(raf)
+  }, [chordRef, enabled, paused])
+
+  return shape
+}
 
 export interface TuneViewProps {
   /** What the pipe is currently set to — the chord mode's targets. */
@@ -135,10 +204,10 @@ export function TuneView(props: TuneViewProps) {
     const a = analyzerRef.current
     if (!a) return
     a.a4 = props.a4
-    a.targets = mode === 'chord' ? props.tones.map((t) => ({ freq: t.freq })) : []
+    a.targets = props.tones.length > 1 ? props.tones.map((t) => ({ freq: t.freq })) : []
     voiceRef.current = null
     chordRef.current = null
-  }, [mode, props.tones, props.a4])
+  }, [props.tones, props.a4])
 
   /**
    * The reference is a latch here, not a hold.
@@ -178,22 +247,19 @@ export function TuneView(props: TuneViewProps) {
 
   const bad = status === 'denied' || status === 'error'
 
+  // Only worth asking when the pipe is holding something that could be a chord.
+  // A single note has nothing to be four parts of, so the shape is settled.
+  const shape = useHeardShape(chordRef, props.tones.length > 1 && mode !== 'ring', sounding)
+
   return (
     <div className="tune">
       <div className="segmented tune-modes" role="group" aria-label="What to listen for">
         <button
-          className={`seg${mode === 'voice' ? ' is-on' : ''}`}
-          onClick={() => setMode('voice')}
-          aria-pressed={mode === 'voice'}
+          className={`seg${mode === 'listen' ? ' is-on' : ''}`}
+          onClick={() => setMode('listen')}
+          aria-pressed={mode === 'listen'}
         >
-          Voice
-        </button>
-        <button
-          className={`seg${mode === 'chord' ? ' is-on' : ''}`}
-          onClick={() => setMode('chord')}
-          aria-pressed={mode === 'chord'}
-        >
-          Parts
+          Listen
         </button>
         <button
           className={`seg${mode === 'ring' ? ' is-on' : ''}`}
@@ -218,9 +284,10 @@ export function TuneView(props: TuneViewProps) {
           <p>{STATUS_TEXT[status]}</p>
           {detail && <p className="hint">{detail}</p>}
         </div>
-      ) : mode === 'voice' ? (
+      ) : shape === 'voice' ? (
         <VoicePanel
           readingRef={voiceRef}
+          target={props.tones[0] ? midiToLabel(props.tones[0].midi, props.useFlats) : ''}
           useFlats={props.useFlats}
           driftRef={driftRef}
           onResetDrift={resetDrift}
@@ -256,12 +323,22 @@ export function TuneView(props: TuneViewProps) {
 
 function VoicePanel({
   readingRef,
+  target,
   useFlats,
   driftRef,
   onResetDrift,
   paused,
 }: {
   readingRef: React.RefObject<VoiceReading | null>
+  /**
+   * What the pipe is set to, shown dim while nothing is being sung.
+   *
+   * The slot held an em dash, then briefly nothing at all, and nothing at all
+   * is a two-hundred-pixel hole in the middle of the panel. The note you are
+   * about to sing against is the obvious thing to put there: dim is the target,
+   * lit is you, and the line underneath says which you are looking at.
+   */
+  target: string
   useFlats: boolean
   driftRef: React.RefObject<{ sum: number; n: number; since: number }>
   onResetDrift: () => void
@@ -288,6 +365,7 @@ function VoicePanel({
       const live = !!r && r.freq > 0 && !paused
       if (live && r) {
         note.textContent = midiToLabel(r.midi, useFlats)
+        note.classList.remove('is-target')
         const cents = Math.max(-CENTS_RANGE, Math.min(CENTS_RANGE, r.cents))
         shown += (cents - shown) * 0.25
         centsRef.current.textContent = formatCents(r.cents)
@@ -299,7 +377,12 @@ function VoicePanel({
         centsRef.current.style.color = tint
         meterRef.current?.classList.toggle('is-locked', Math.abs(r.cents) <= IN_TUNE_CENTS)
       } else {
-        note.textContent = '—'
+        // Empty, not an em dash. At ninety-two points a dash is a rule drawn
+        // across the middle of the panel — it reads as something rendered
+        // wrong rather than as an instrument with nothing to say yet. The line
+        // underneath already says "sing a note"; the slot just holds its place.
+        note.textContent = target
+        note.classList.add('is-target')
         centsRef.current.textContent = paused ? 'listening paused' : 'sing a note'
         centsRef.current.style.color = ''
         hzRef.current.textContent = ''
@@ -323,12 +406,12 @@ function VoicePanel({
     }
     raf = requestAnimationFrame(frame)
     return () => cancelAnimationFrame(raf)
-  }, [readingRef, useFlats, driftRef, paused])
+  }, [readingRef, target, useFlats, driftRef, paused])
 
   return (
     <div className="plate voice-plate">
-      <div className="tune-note" ref={noteRef}>
-        \u2014
+      <div className="tune-note is-target" ref={noteRef}>
+        {target}
       </div>
       <div className="tune-cents" ref={centsRef}>
         sing a note

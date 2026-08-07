@@ -1,5 +1,3 @@
-import { useEffect, useRef } from 'react'
-import type { BreathFrame } from '../audio/breath'
 import type { BreathResponse } from '../App'
 import { Sheet } from './Sheet'
 
@@ -22,7 +20,6 @@ export interface SettingsSheetProps {
   onRecalibrate: () => void
   volume: number
   onVolume: (v: number) => void
-  breathFrameRef: React.RefObject<BreathFrame | null>
   breathResponse: BreathResponse
   onBreathResponse: (v: BreathResponse) => void
   micInputs: MediaDeviceInfo[]
@@ -177,7 +174,6 @@ export function SettingsSheet(props: SettingsSheetProps) {
             Re-listen to the room
           </button>
           <p className="hint">Stay quiet for a second while it measures.</p>
-          {props.breathMode && <MicDiagnostics frameRef={props.breathFrameRef} />}
         </Row>
 
         <Row
@@ -244,59 +240,6 @@ export function SettingsSheet(props: SettingsSheetProps) {
   )
 }
 
-/**
- * What the microphone is actually reporting.
- *
- * Breath detection depends on hardware that varies wildly between phones, and
- * "it doesn't trigger" is impossible to diagnose from a description. This shows
- * both gate conditions separately, so a failure points straight at its cause:
- * level below the trigger line, or a spectrum that doesn't look like breath.
- */
-function MicDiagnostics({
-  frameRef,
-}: {
-  frameRef: React.RefObject<BreathFrame | null>
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    let raf = 0
-    const tick = () => {
-      raf = requestAnimationFrame(tick)
-      const f = frameRef.current
-      const el = ref.current
-      if (!f || !el) return
-      const ratio = f.threshold > 0 ? f.energy / f.threshold : 0
-      // Three states, not two: HOLDING is the smoothing carrying a note across
-      // a gap in the breath, and without it on screen that looks like a stuck
-      // note rather than a deliberate one.
-      const state = f.blowing ? 'BLOWING' : f.sustaining ? 'HOLDING' : 'closed'
-      el.textContent =
-        `level ${ratio.toFixed(2)}× trigger · ` +
-        `breath-like ${f.noisiness.toFixed(2)} · ` +
-        `${state} ${f.pressure.toFixed(2)} · ` +
-        // What the smoke is drawn from, which is a different and much more
-        // forgiving measure than the reed's drive — worth showing separately
-        // when the question is "can it hear me at all".
-        `air ${f.breathiness.toFixed(2)}`
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [frameRef])
-
-  return (
-    <div className="diagnostics">
-      <div className="diagnostics-label">Microphone right now</div>
-      <div className="diagnostics-values" ref={ref}>
-        waiting…
-      </div>
-      <p className="hint">
-        Blow at the phone and watch this. Level needs to pass 1.00×; if it does
-        and nothing sounds, send me both numbers.
-      </p>
-    </div>
-  )
-}
 
 /**
  * A heading every few rows.

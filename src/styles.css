@@ -682,6 +682,15 @@ body {
   }
 }
 
+/* The listening panel changes shape when the room does — one voice's needle to
+   four parts' meters and back. That swap replaced a segmented control, so it
+   has to read as the instrument noticing rather than as the screen glitching:
+   the same fade the sheets use, over the same duration as everything else. */
+.voice-plate,
+.chord-plate {
+  animation: fade var(--t) var(--ease);
+}
+
 .voice-plate {
   display: flex;
   flex-direction: column;
@@ -693,9 +702,20 @@ body {
   font-family: var(--serif);
   font-size: clamp(56px, 20vw, 92px);
   line-height: 1.05;
+  /* Holds the panel's height while there is nothing being sung, so the meter
+     below does not jump up the screen the moment the room goes quiet. */
+  min-height: 1.05em;
+  transition: opacity var(--t) var(--ease);
   color: var(--ink);
   font-variant-numeric: tabular-nums;
   text-shadow: 0 0 30px rgba(var(--amber-rgb), 0.25);
+}
+
+/* The target, not a reading. Dim enough that it is plainly not what you just
+   sang, present enough that the panel is never a blank. */
+.tune-note.is-target {
+  opacity: 0.26;
+  text-shadow: none;
 }
 
 .tune-cents {
@@ -1571,27 +1591,6 @@ body {
   }
 }
 
-.diagnostics {
-  margin-top: var(--s5);
-  padding-top: var(--s4);
-  border-top: 1px dashed rgba(var(--brass-rgb), 0.16);
-}
-
-.diagnostics-label {
-  font-size: var(--engraved);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--brass-dim);
-  margin-bottom: var(--s3);
-}
-
-.diagnostics-values {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--label);
-  color: var(--amber);
-  font-variant-numeric: tabular-nums;
-}
-
 .select {
   width: 100%;
   padding: var(--s4) var(--s4);
@@ -1818,78 +1817,41 @@ body {
   text-align: center;
 }
 
-.ring-number {
+/*
+ * The verdict.
+ *
+ * This slot used to hold a number at eighty-four pixels — the largest thing in
+ * the app, given to the least honest quantity in it. Four seconds of four
+ * people does not resolve to a point, and a score you can watch tick from 71 to
+ * 73 turns listening into optimising. The sentence is the reading now, at the
+ * size a reading gets; the score survives only as the thing that picks it.
+ */
+.ring-verdict {
   font-family: var(--serif);
-  font-size: clamp(54px, 18vw, 84px);
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
+  font-size: var(--figure);
+  line-height: 1.25;
+  color: var(--ink);
+  text-wrap: balance;
 }
 
-.ring-number.is-good {
+.ring-verdict.is-good {
   color: var(--good);
   text-shadow: 0 0 34px rgba(var(--good-rgb), 0.35);
 }
 
-.ring-number.is-mid {
+.ring-verdict.is-mid {
   color: var(--amber);
   text-shadow: 0 0 30px rgba(var(--amber-rgb), 0.3);
 }
 
-.ring-number.is-poor {
+.ring-verdict.is-poor {
   color: var(--bad);
-}
-
-.ring-verdict {
-  margin-top: var(--s1);
-  font-size: var(--lead);
-  color: var(--ink);
 }
 
 .ring-blame {
   margin-top: var(--s2);
   font-size: var(--control);
   color: var(--ink-dim);
-}
-
-.ring-trace {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s4);
-}
-
-.ring-timeline {
-  width: 100%;
-  height: 46px;
-  display: block;
-  border-bottom: 1px solid var(--line);
-}
-
-.spectro {
-  position: relative;
-  border-radius: var(--r-sm);
-  overflow: hidden;
-  border: 1px solid var(--line);
-}
-
-.spectro canvas {
-  display: block;
-  width: 100%;
-  height: 118px;
-}
-
-.spectro-scale {
-  position: absolute;
-  top: 4px;
-  right: 6px;
-  bottom: 4px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  font-size: var(--engraved);
-  letter-spacing: 0.08em;
-  color: rgba(var(--ink-rgb), 0.55);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-  pointer-events: none;
 }
 
 /* The ladder: the bass's own harmonic series, highest rung at the top. */
@@ -2382,6 +2344,8 @@ body {
   .stage,
   .sheet,
   .sheet-scrim,
+  .voice-plate,
+  .chord-plate,
   .needs-chord-arrow,
   .tour-card,
   .tour-nudge,

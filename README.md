@@ -44,13 +44,18 @@ the one it gave you. Tap **Tuner** at the top and it will. Everything it listens
 for is set from the tuner itself — the note, the chord, the octave — so nothing
 here ever sends you back to the other screen to answer a question it asked.
 
-*Voice* names what you're singing and shows how far off it is, in cents,
-with a needle you can read while you're still singing. It also keeps a running
-average — the flat-drift number, which is how you find out that the chorus sagged
-fourteen cents over a run-through.
+*Listen* does not ask you what you are about to do. One voice gets its note
+named and a needle showing how far off it is, plus a running average — the
+flat-drift number, which is how you find out that the chorus sagged fourteen
+cents over a run-through. Let three more people in and the panel becomes four
+meters, one per part: who's flat, who's sharp, who isn't there.
 
-*Parts* is the interesting one. Pick a chord, sing it, and every part gets its
-own meter: who's flat, who's sharp, who isn't there. The panel lights in
+This used to be two modes with a switch between them, which was the app making
+its own internal split into somebody else's decision. How many people are
+singing is not a preference — it is a fact, the analyser already tracks it with
+hysteresis because it has to, and the panel can simply follow. It is quick to
+open up when a chord arrives and slow to give it up, because the gap between two
+phrases is a breath, not the end of the chord. The panel lights in
 proportion to how much of the chord is locked. Because the pipe already knows
 what the chord is *meant* to be, this doesn't have to solve blind four-part
 transcription — it only has to look in the right places, which is both tractable
@@ -91,9 +96,16 @@ So the report is a **ladder**: the bass's harmonic series, rung by rung, showing
 which voices meet on each one and whether they locked or how many times a second
 they're beating. In a barbershop seventh the lead meets the bass on rung 2, the
 third on rung 5, and the seventh on rung 7 — and that seventh rung is where the
-style lives. Underneath: a score, a trace of how it held up across the take, a
-spectrogram, each part's tuning against the bass, and the recording to play
-back.
+style lives. Underneath: each part's tuning against the bass, and the recording
+to play back.
+
+The verdict is a sentence, not a number. There was a score out of 100 here in
+the largest type in the app, and it was the least honest quantity in it: four
+seconds of four people does not resolve to a point, and a figure you can watch
+tick from 71 to 73 turns listening into optimising a readout. The score survives
+as the thing that chooses the sentence. A spectrogram and a per-block trace went
+with it — both were lovely to build and neither is anything a person reads in a
+rehearsal, which is the whole test.
 
 Everything is measured against the bass **as you actually sang it** — found by
 starting from the pitch the pipe just gave out and confirming it against the
@@ -422,7 +434,7 @@ src/
     setlist.ts    saved pitches, and packing a list into a URL
   ui/
     PitchDisc.tsx the brass disc (canvas), and the smoke over it
-    TuneView.tsx  the tuner — one voice, every part, the ring test
+    TuneView.tsx  the tuner — the listening panel and the ring test
     RingView.tsx  recording, and the report afterwards
     NeedsChord.tsx what to say when there is nothing to listen for yet
     Sheet.tsx     the panel that slides up, and how to get back out of it
@@ -432,7 +444,7 @@ src/
 test/
   synth.ts        four synthetic singers, with vibrato, formants and a room
   phone.ts        a hall, a driven preamp, a capsule that cannot hear a bass
-  chord.test.ts   the live Parts panel
+  chord.test.ts   the live listening panel
   ring.test.ts    the ring test
   phone.test.ts   all of the above, through a handset
 ```
