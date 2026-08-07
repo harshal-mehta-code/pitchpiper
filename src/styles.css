@@ -15,13 +15,19 @@
   --amber: #ffb23c;
   --ink: #ecdfc2;
   --ink-dim: #93a099;
-  --line: rgba(217, 180, 106, 0.16);
+  /* The same triplets-as-well-as-hexes rule the verdict colours follow, and for
+     the same reason: a hairline at 9% brass and a grip at 28% ink were both
+     written out longhand, and a longhand colour is one the palette cannot move. */
+  --brass-rgb: 217, 180, 106;
+  --brass-lit-rgb: 244, 220, 160;
+  --ink-rgb: 236, 223, 194;
+  --line: rgba(var(--brass-rgb), 0.16);
   --line-lit: rgba(var(--amber-rgb), 0.5);
   --wash: rgba(255, 255, 255, 0.03);
   --wash-lit: rgba(var(--amber-rgb), 0.1);
   /* Brass with the light off it — a rung nobody is sharing, a bar with nothing
      to say. Named because it was written out as a literal in a component. */
-  --brass-faint: rgba(217, 180, 106, 0.28);
+  --brass-faint: rgba(var(--brass-rgb), 0.28);
   /* A reading that is arriving but does not mean anything yet — sound at the
      microphone that is not breath, a bar below its own trigger. */
   --dead: rgba(150, 170, 160, 0.35);
@@ -37,6 +43,30 @@
      phones that turn up at a rehearsal. */
   --good-rgb: 111, 211, 155;
   --amber-rgb: 255, 178, 60;
+
+  /*
+   * Two surfaces, written down once.
+   *
+   * A panel lifted off the felt was drawn three times — #16261f→#0b1512 for the
+   * sheet, #1b2d26→#0e1a15 for the tour card, #1b2d26→#101d18 for the nudge —
+   * three gradients a few percent apart, which is not three materials, it is one
+   * material mixed from memory on three different days. Same for the lit brass
+   * of a primary button: the sheet's and the tour's disagreed in both stops.
+   *
+   * The ends are named as well as the ramps, because two things need the flat
+   * colour: the nudge's little arrow, which has to be the exact top of the panel
+   * it grows out of, and the pipe's own lit key (.seg.is-on), which is this same
+   * brass with a bevel stop added in the middle — a key you press, so it keeps
+   * the extra stop, but it starts and ends where every other brass face does.
+   */
+  --raised-top: #1a2b24;
+  --raised-bot: #0d1814;
+  --raised: linear-gradient(180deg, var(--raised-top), var(--raised-bot));
+  --brass-top: #f0cf85;
+  --brass-bot: #c69a41;
+  --brass-face: linear-gradient(180deg, var(--brass-top), var(--brass-bot));
+  /* Near-black with the warmth left in — the only ink that goes on top of brass. */
+  --on-brass: #2a1c05;
 
   /*
    * A type scale, and only these.
@@ -64,7 +94,11 @@
   --figure: 22px;
   --display: 44px;
 
-  /* Spacing, on a four-pixel grid with one half-step for tight rows. */
+  /* Spacing, on a four-pixel grid with one half-step for tight rows.
+     Held, now: there were fifteen raw values in here — 6, 9, 14, 18, 22, 26 —
+     several of which were already 4, 8 or 12 written out longhand. The only
+     literals left are geometry rather than rhythm: half a pixel to centre a
+     needle, a hairline gap, the clearance an absolutely-positioned ✕ needs. */
   --s1: 2px;
   --s2: 4px;
   --s3: 8px;
@@ -73,10 +107,40 @@
   --s6: 24px;
   --s7: 32px;
 
+  /*
+   * Corners, and only these.
+   *
+   * The same argument as the type scale, which was made and then not carried
+   * through: these four were declared and then bypassed thirteen times by raw
+   * 10px, 12px, 7px and 22px — so buttons two rows apart rounded differently
+   * for no reason anyone could name. A radius is a material property. One
+   * instrument, milled by one hand, has one set of corners.
+   *
+   *   xs   inside something already rounded — a bar within a slot
+   *   sm   buttons, chips, inputs
+   *   md   panels that sit on the felt
+   *   lg   plates — the largest milled face
+   *   sheet the case lid coming up over the whole instrument
+   */
+  --r-xs: 7px;
   --r-sm: 10px;
   --r-md: 14px;
   --r-lg: 18px;
+  --r-sheet: 22px;
   --r-pill: 999px;
+
+  /*
+   * Icons: two sizes and one weight.
+   *
+   * There were five sizes (12, 14, 15, 16, 17) and three stroke weights
+   * (1.6, 1.7, 1.8) — close enough that no one chose them, far enough apart
+   * that the ✕ on a sheet and the ✕ on a tour card were visibly drawn by
+   * different pens. Functional icons are one size; the dismiss glyphs, which
+   * are always secondary to whatever they close, are one size smaller.
+   */
+  --icon: 16px;
+  --icon-sm: 14px;
+  --icon-stroke: 1.6;
 
   /* One easing curve and two durations. Everything that moves moves alike. */
   --ease: cubic-bezier(0.2, 0.9, 0.3, 1);
@@ -98,6 +162,28 @@
   outline-offset: 2px;
 }
 
+/* Every icon in the app, drawn with one pen.
+   The seven svg rules that used to live in seven component sections repeated
+   these four lines each and disagreed on the other two, which is how the ✕ on
+   a sheet ended up heavier than the ✕ on a tour card. */
+:where(.icon-btn, .seg, .pill, .sheet-x, .tour-x, .tour-nudge-x) svg {
+  width: var(--icon);
+  height: var(--icon);
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--icon-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The dismiss glyphs, one step down: an ✕ is always secondary to the thing it
+   closes, and at the same size as a functional icon it competes with it. */
+:where(.sheet-x, .tour-x, .tour-nudge-x) svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
 /* Every button in the app gives under the thumb by the same amount. It is the
    cheapest possible substitute for the feel of a real key. */
 :where(button) {
@@ -114,7 +200,7 @@
 
 html,
 body {
-  margin: 0;;
+  margin: 0;
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
@@ -140,7 +226,7 @@ body {
   height: 100vh;
   height: 100dvh;
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
-    env(safe-area-inset-bottom) env(safe-area-inset-left);;
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
   background:
     radial-gradient(
       120% 90% at 50% 22%,
@@ -220,7 +306,11 @@ body {
   margin-left: auto;
 }
 
-.icon-btn {
+/* The round 34px button, in the bar and in the corner of a sheet. Defined once:
+   these were two identical blocks a thousand lines apart, and the copy in the
+   sheet had quietly lost its hover state along the way. */
+.icon-btn,
+.sheet-x {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -240,21 +330,13 @@ body {
 }
 
 @media (hover: hover) {
-  .icon-btn:hover {
+  .icon-btn:hover,
+  .sheet-x:hover {
     color: var(--brass);
     border-color: var(--line-lit);
   }
 }
 
-.icon-btn svg {
-  width: 17px;
-  height: 17px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
 
 .icon-btn.is-on {
   color: var(--amber);
@@ -272,7 +354,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: var(--s3);
-  padding: 0 12px;;
+  padding: 0 var(--s4);
   animation: stage-in 0.22s var(--ease);
 }
 
@@ -328,11 +410,6 @@ body {
   );
 }
 
-.disc-canvas {
-  position: relative;
-  z-index: 1;
-}
-
 /* The air, on a surface of its own so a stream that is meant to blow across
    the screen is not confined to a square barely wider than the instrument. It
    sits above the metal — smoke in front of a lit object — and is additive, so
@@ -370,8 +447,13 @@ body {
   );
 }
 
+/* The instrument itself, between the pool of light it sits in and the air
+   moving across it. Declared once — this was two blocks forty lines apart,
+   which is the sort of thing that lets a z-index go missing in a refactor. */
 .disc-canvas {
   display: block;
+  position: relative;
+  z-index: 1;
   /* Without this the browser steals the drag to scroll the page. */
   touch-action: none;
   cursor: grab;
@@ -475,7 +557,7 @@ body {
 }
 
 .hint-line {
-  margin: 0;;
+  margin: 0;
   font-size: var(--control);
   letter-spacing: 0.04em;
   color: var(--ink-dim);
@@ -488,7 +570,7 @@ body {
 
 .stage-tune {
   justify-content: flex-start;
-  padding: var(--s4) var(--s4) var(--s3);;
+  padding: var(--s4) var(--s4) var(--s3);
   overflow-y: auto;
 }
 
@@ -496,7 +578,7 @@ body {
    an overflowing flex child instead of letting it scroll. */
 .tune {
   width: min(460px, 100%);
-  margin: auto 0;;
+  margin: auto 0;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -511,7 +593,7 @@ body {
   font-family: var(--sans);
   font-size: var(--control);
   min-width: 0;
-  padding: var(--s3) var(--s5);;
+  padding: var(--s3) var(--s5);
 }
 
 /*
@@ -529,7 +611,7 @@ body {
  */
 .plate {
   position: relative;
-  padding: var(--s5) var(--s5) var(--s4);;
+  padding: var(--s5) var(--s5) var(--s4);
   border-radius: var(--r-lg);
   border: 1px solid var(--line);
   background:
@@ -540,7 +622,7 @@ body {
       rgba(0, 0, 0, 0.16) 100%
     );
   box-shadow:
-    inset 0 1px 0 rgba(244, 220, 160, 0.09),
+    inset 0 1px 0 rgba(var(--brass-lit-rgb), 0.09),
     inset 0 -1px 0 rgba(0, 0, 0, 0.4),
     0 12px 28px -18px rgba(0, 0, 0, 0.9);
 }
@@ -550,8 +632,8 @@ body {
   align-items: baseline;
   justify-content: space-between;
   gap: var(--s3);
-  margin-bottom: var(--s4);;
-  padding-bottom: var(--s3);;
+  margin-bottom: var(--s4);
+  padding-bottom: var(--s3);
   border-bottom: 1px solid var(--line);
 }
 
@@ -569,8 +651,8 @@ body {
   display: flex;
   align-items: center;
   gap: var(--s3);
-  margin-top: var(--s5);;
-  padding-top: var(--s4);;
+  margin-top: var(--s5);
+  padding-top: var(--s4);
   border-top: 1px solid var(--line);
 }
 
@@ -583,7 +665,7 @@ body {
 
 .foot-action {
   flex: 0 0 auto;
-  padding: var(--s2) var(--s4);;
+  padding: var(--s2) var(--s4);
   border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: transparent;
@@ -622,7 +704,7 @@ body {
   color: var(--ink-dim);
   font-variant-numeric: tabular-nums;
   min-height: 1.3em;
-  margin-bottom: var(--s4);;
+  margin-bottom: var(--s4);
 }
 
 .tune-hz {
@@ -648,13 +730,13 @@ body {
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.46), rgba(0, 0, 0, 0.26));
   box-shadow:
     inset 0 2px 4px rgba(0, 0, 0, 0.6),
-    inset 0 -1px 0 rgba(244, 220, 160, 0.07);
+    inset 0 -1px 0 rgba(var(--brass-lit-rgb), 0.07);
   overflow: hidden;
 }
 
 .meter-sm {
   height: 20px;
-  border-radius: 7px;
+  border-radius: var(--r-xs);
 }
 
 /* The range inside which a chord actually locks. Somebody singing cannot read
@@ -681,7 +763,7 @@ body {
   top: 30%;
   bottom: 30%;
   width: 1px;
-  background: rgba(217, 180, 106, 0.22);
+  background: rgba(var(--brass-rgb), 0.22);
 }
 
 .meter-centre {
@@ -690,7 +772,7 @@ body {
   bottom: 0;
   left: 50%;
   width: 1px;
-  background: rgba(244, 220, 160, 0.45);
+  background: rgba(var(--brass-lit-rgb), 0.45);
 }
 
 .meter-needle {
@@ -710,7 +792,7 @@ body {
   justify-content: space-between;
   align-items: baseline;
   gap: var(--s3);
-  margin-top: var(--s3);;
+  margin-top: var(--s3);
   font-size: var(--label);
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -729,7 +811,7 @@ body {
   --lock: 0;
   transition: box-shadow var(--t) var(--ease);
   box-shadow:
-    inset 0 1px 0 rgba(244, 220, 160, 0.09),
+    inset 0 1px 0 rgba(var(--brass-lit-rgb), 0.09),
     inset 0 -1px 0 rgba(0, 0, 0, 0.4),
     0 0 0 1px rgba(var(--good-rgb), calc(var(--lock) * 0.35)),
     0 0 36px -6px rgba(var(--good-rgb), calc(var(--lock) * 0.3));
@@ -835,7 +917,7 @@ body {
 
 .reference {
   width: 100%;
-  padding: var(--s5);;
+  padding: var(--s5);
   border-radius: var(--r-md);
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.04);
@@ -867,7 +949,7 @@ body {
 
 .breath-meter {
   flex: 0 0 auto;
-  padding: 0 var(--s6) var(--s3);;
+  padding: 0 var(--s6) var(--s3);
   display: flex;
   flex-direction: column;
   gap: var(--s3);
@@ -893,8 +975,8 @@ body {
   top: -3px;
   bottom: -3px;
   width: 2px;
-  border-radius: 2px;
-  background: rgba(236, 223, 194, 0.55);
+  border-radius: var(--r-pill);
+  background: rgba(var(--ink-rgb), 0.55);
 }
 
 .breath-status {
@@ -932,7 +1014,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: var(--s4);
-  padding: 14px 16px calc(18px + env(safe-area-inset-bottom));;
+  padding: var(--s4) var(--s5) calc(var(--s5) + env(safe-area-inset-bottom));
   border-top: 1px solid var(--line);
   background: linear-gradient(
     180deg,
@@ -994,22 +1076,12 @@ body {
     transform var(--t-fast) var(--ease);
 }
 
-.seg svg {
-  width: 15px;
-  height: 15px;
-  flex: 0 0 auto;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
 
 /* Three notes stacked. Filled, because at fifteen pixels an outlined circle is
    a smudge. */
 .seg-stack svg {
-  width: 17px;
-  height: 17px;
+  width: calc(var(--icon) + 1px);
+  height: calc(var(--icon) + 1px);
   fill: currentColor;
   stroke: none;
 }
@@ -1061,9 +1133,6 @@ body {
   .chord-type:not(.is-on):hover {
     color: var(--ink);
   }
-}
-
-@media (hover: hover) {
   .seg:not(.is-on):hover {
     color: var(--ink);
     background: rgba(255, 255, 255, 0.05);
@@ -1072,8 +1141,14 @@ body {
 
 /* A lit brass key: bevelled highlight along the top, warm shadow beneath. */
 .seg.is-on {
-  background: linear-gradient(180deg, #f7dc9c 0%, #ddb76c 48%, #c69a41 100%);
-  color: #2a1c05;
+  background: linear-gradient(
+    180deg,
+    #f7dc9c 0%,
+    var(--brass-top) 22%,
+    #ddb76c 48%,
+    var(--brass-bot) 100%
+  );
+  color: var(--on-brass);
   font-weight: 600;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.45),
@@ -1129,15 +1204,6 @@ body {
   border-color: var(--line-lit);
 }
 
-.pill svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
 
 .pill.is-on {
   color: var(--amber);
@@ -1156,7 +1222,7 @@ body {
 }
 
 .stepper-tag {
-  margin-right: 3px;
+  margin-right: var(--s1);
   font-size: var(--engraved);
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -1231,12 +1297,6 @@ body {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .needs-chord-arrow {
-    animation: none;
-  }
-}
-
 /* --- settings sheet ------------------------------------------------------- */
 
 .sheet-scrim {
@@ -1259,10 +1319,10 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-radius: 22px 22px 0 0;
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
   border: 1px solid var(--line);
   border-bottom: 0;
-  background: linear-gradient(180deg, #16261f, #0b1512);
+  background: var(--raised);
   box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.6);
   animation: rise 0.24s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
@@ -1285,35 +1345,17 @@ body {
 
 .sheet-x {
   position: absolute;
-  top: 6px;
-  right: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 1px solid var(--line);
-  background: var(--wash);
-  color: var(--ink-dim);
-  cursor: pointer;
+  top: var(--s3);
+  right: var(--s4);
 }
 
-.sheet-x svg {
-  width: 15px;
-  height: 15px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-}
 
 .sheet-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 6px 22px calc(26px + env(safe-area-inset-bottom));;
+  padding: var(--s3) var(--s6) calc(var(--s6) + env(safe-area-inset-bottom));
 }
 
 @keyframes fade {
@@ -1333,8 +1375,8 @@ body {
   width: 44px;
   height: 4px;
   border-radius: var(--r-pill);
-  background: rgba(236, 223, 194, 0.28);
-  margin: 2px auto 9px;;
+  background: rgba(var(--ink-rgb), 0.28);
+  margin: var(--s1) auto var(--s3);
 }
 
 /* A sheet that slides up over the instrument should say what it is. Without
@@ -1348,7 +1390,7 @@ body {
   color: var(--brass);
   text-align: center;
   opacity: 0.8;
-  margin: 0;;
+  margin: 0;
 }
 
 .sheet-section {
@@ -1365,8 +1407,8 @@ body {
 }
 
 .sheet-row {
-  padding: 14px 0;;
-  border-bottom: 1px solid rgba(217, 180, 106, 0.09);
+  padding: var(--s4) 0;
+  border-bottom: 1px solid rgba(var(--brass-rgb), 0.09);
 }
 
 .sheet-row-head {
@@ -1406,7 +1448,7 @@ body {
 }
 
 .hint {
-  margin: 8px 0 0;;
+  margin: var(--s3) 0 0;
   font-size: var(--label);
   line-height: 1.5;
   color: var(--ink-dim);
@@ -1421,7 +1463,7 @@ body {
 .chip {
   flex: 1;
   padding: var(--s3) var(--s4);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
   color: var(--ink-dim);
@@ -1447,7 +1489,7 @@ body {
 }
 
 .sheet-about {
-  padding: 18px 0 4px;;
+  padding: var(--s5) 0 var(--s2);
   font-size: var(--label);
   line-height: 1.65;
   color: var(--ink-dim);
@@ -1464,9 +1506,9 @@ body {
   margin-top: var(--s4);
   padding: var(--s4);
   border: 0;
-  border-radius: 12px;
-  background: linear-gradient(180deg, #f0cf85, #c69a41);
-  color: #2a1c05;
+  border-radius: var(--r-sm);
+  background: var(--brass-face);
+  color: var(--on-brass);
   font-size: var(--body);
   font-weight: 600;
   font-family: inherit;
@@ -1483,7 +1525,7 @@ body {
   /* The bar itself stays — losing it would take the tuner with it — but
      everything on it that is only decoration goes. */
   .topbar {
-    padding: 6px 16px 0;;
+    padding: var(--s2) var(--s5) 0;
   }
   .wordmark {
     display: none;
@@ -1512,19 +1554,8 @@ body {
     flex-direction: row;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 8px 10px;
+    gap: var(--s3);
     padding-top: var(--s3);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --press: 1;
-  }
-  .sheet,
-  .sheet-scrim,
-  .stage {
-    animation: none;
   }
 }
 
@@ -1543,7 +1574,7 @@ body {
 .diagnostics {
   margin-top: var(--s5);
   padding-top: var(--s4);
-  border-top: 1px dashed rgba(217, 180, 106, 0.16);
+  border-top: 1px dashed rgba(var(--brass-rgb), 0.16);
 }
 
 .diagnostics-label {
@@ -1564,7 +1595,7 @@ body {
 .select {
   width: 100%;
   padding: var(--s4) var(--s4);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.04);
   color: var(--ink);
@@ -1583,7 +1614,7 @@ body {
   flex: 1 1 auto;
   min-width: 0;
   padding: var(--s4) var(--s4);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--line);
   background: rgba(0, 0, 0, 0.28);
   color: var(--ink);
@@ -1609,8 +1640,8 @@ body {
 
 .songs {
   list-style: none;
-  margin: 6px 0 14px;;
-  padding: 0;;
+  margin: var(--s3) 0 var(--s4);
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: var(--s2);
@@ -1630,7 +1661,7 @@ body {
   justify-content: space-between;
   gap: var(--s4);
   padding: var(--s4) var(--s4);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
   color: var(--ink);
@@ -1656,7 +1687,7 @@ body {
 .song-btn {
   flex: 0 0 auto;
   width: 34px;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--line);
   background: transparent;
   color: var(--ink-dim);
@@ -1673,7 +1704,7 @@ body {
 .incoming {
   margin-bottom: var(--s3);
   padding: var(--s5);
-  border-radius: 12px;
+  border-radius: var(--r-md);
   border: 1px solid rgba(var(--amber-rgb), 0.4);
   background: rgba(var(--amber-rgb), 0.08);
 }
@@ -1685,7 +1716,7 @@ body {
 }
 
 .incoming-list {
-  margin: 0 0 12px;;
+  margin: 0 0 var(--s4);
   padding-left: var(--s5);
   font-size: var(--label);
   line-height: 1.6;
@@ -1713,7 +1744,7 @@ body {
 }
 
 .ring-intro h2 {
-  margin: 0 0 var(--s3);;
+  margin: 0 0 var(--s3);
   font-family: var(--serif);
   font-size: var(--figure);
   font-weight: 500;
@@ -1721,7 +1752,7 @@ body {
 }
 
 .ring-intro p {
-  margin: 0;;
+  margin: 0;
   font-size: var(--control);
   line-height: 1.6;
   color: var(--ink-dim);
@@ -1835,7 +1866,7 @@ body {
 
 .spectro {
   position: relative;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   overflow: hidden;
   border: 1px solid var(--line);
 }
@@ -1856,21 +1887,21 @@ body {
   justify-content: space-between;
   font-size: var(--engraved);
   letter-spacing: 0.08em;
-  color: rgba(236, 223, 194, 0.55);
+  color: rgba(var(--ink-rgb), 0.55);
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
   pointer-events: none;
 }
 
 /* The ladder: the bass's own harmonic series, highest rung at the top. */
 .ladder .rung:first-of-type {
-  margin-top: calc(var(--s1) * -1);;
+  margin-top: calc(var(--s1) * -1);
 }
 
 .rung {
   display: flex;
   align-items: center;
   gap: var(--s3);
-  padding: 3px 0;;
+  padding: var(--s1) 0;
   font-size: var(--label);
   color: var(--ink-dim);
   opacity: 0.45;
@@ -2036,7 +2067,7 @@ body {
   padding: var(--s5) var(--s5) var(--s4);
   border-radius: var(--r-md);
   border: 1px solid var(--line-lit);
-  background: linear-gradient(180deg, #1b2d26, #0e1a15);
+  background: var(--raised);
   box-shadow:
     0 18px 44px rgba(0, 0, 0, 0.55),
     0 0 40px rgba(var(--amber-rgb), 0.06),
@@ -2052,15 +2083,15 @@ body {
   position: absolute;
   width: 1px;
   height: 1px;
-  margin: -1px;;
-  padding: 0;;
+  margin: -1px;
+  padding: 0;
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
 }
 
 .tour-title {
-  margin: 0 26px 5px 0;;
+  margin: 0 26px var(--s2) 0;
   font-family: var(--serif);
   font-size: var(--lead);
   font-weight: 500;
@@ -2069,7 +2100,7 @@ body {
 }
 
 .tour-body {
-  margin: 0;;
+  margin: 0;
   font-size: var(--control);
   line-height: 1.55;
   color: var(--ink-dim);
@@ -2124,7 +2155,7 @@ body {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: rgba(217, 180, 106, 0.22);
+  background: rgba(var(--brass-rgb), 0.22);
   transition:
     background var(--t),
     transform var(--t) var(--ease);
@@ -2161,8 +2192,8 @@ body {
 .tour-next {
   padding: var(--s3) var(--s5);
   border-radius: var(--r-pill);
-  background: linear-gradient(180deg, #f0cf85, #c69a41);
-  color: #2a1c05;
+  background: var(--brass-face);
+  color: var(--on-brass);
   font-weight: 600;
 }
 
@@ -2182,14 +2213,6 @@ body {
   cursor: pointer;
 }
 
-.tour-x svg {
-  width: 14px;
-  height: 14px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-}
 
 @media (hover: hover) {
   .tour-x:hover {
@@ -2247,7 +2270,7 @@ body {
   padding: var(--s2) var(--s2) var(--s2) var(--s4);
   border-radius: var(--r-pill);
   border: 1px solid var(--line-lit);
-  background: linear-gradient(180deg, #1b2d26, #101d18);
+  background: var(--raised);
   box-shadow:
     0 10px 24px rgba(0, 0, 0, 0.45),
     0 0 24px rgba(var(--amber-rgb), 0.07);
@@ -2269,7 +2292,7 @@ body {
   width: 9px;
   height: 9px;
   transform: rotate(45deg);
-  background: #1b2d26;
+  background: var(--raised-top);
   border-left: 1px solid var(--line-lit);
   border-top: 1px solid var(--line-lit);
 }
@@ -2282,7 +2305,7 @@ body {
 }
 
 .tour-nudge-take {
-  padding: 4px 0;;
+  padding: var(--s2) 0;
   border: none;
   background: none;
   font-family: inherit;
@@ -2312,14 +2335,6 @@ body {
   cursor: pointer;
 }
 
-.tour-nudge-x svg {
-  width: 12px;
-  height: 12px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-}
 
 @media (hover: hover) {
   .tour-nudge-x:hover {
@@ -2350,11 +2365,26 @@ body {
   }
 }
 
+/* --- motion, off ---------------------------------------------------------- */
+
+/*
+ * Everything that moves, stopped in one place.
+ *
+ * This was three blocks in three sections, which is how a preference gets
+ * half-honoured: the arrow stopped nudging but the tour ring kept pulsing.
+ * If it animates, it belongs in this list — and --press flattens every button
+ * in the app at once, so a press stays a state change rather than a lurch.
+ */
 @media (prefers-reduced-motion: reduce) {
-  .tour-card,
-  .tour-nudge {
-    animation: none;
+  :root {
+    --press: 1;
   }
+  .stage,
+  .sheet,
+  .sheet-scrim,
+  .needs-chord-arrow,
+  .tour-card,
+  .tour-nudge,
   .tour-ring,
   .icon-btn.is-new::after {
     animation: none;
