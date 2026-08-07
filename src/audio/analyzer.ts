@@ -27,7 +27,12 @@ import {
   type PartPlan,
 } from './chord'
 
-export { IN_TUNE_CENTS, type ChordReading, type PartReading } from './chord'
+export {
+  IN_TUNE_CENTS,
+  CENTS_RANGE,
+  type ChordReading,
+  type PartReading,
+} from './chord'
 
 export type AnalyzerStatus = 'idle' | 'requesting' | 'listening' | 'denied' | 'error'
 

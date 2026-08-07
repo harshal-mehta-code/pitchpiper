@@ -740,13 +740,13 @@ body {
 }
 
 /* The range inside which a chord actually locks. Somebody singing cannot read
-   a number off a needle, but they can see whether it is in the light. */
+   a number off a needle, but they can see whether it is in the light.
+   left/width are set by Meter.tsx from the analyser's own lock range — they
+   were 44%/12% here, which is the same ±6 cents arrived at by hand. */
 .meter-window {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 44%;
-  width: 12%;
   background: rgba(var(--good-rgb), 0.12);
   box-shadow:
     inset 1px 0 0 rgba(var(--good-rgb), 0.28),

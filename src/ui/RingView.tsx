@@ -4,6 +4,7 @@ import { MAX_SECONDS, MIN_SECONDS, SnippetRecorder, toAudioBuffer } from '../aud
 import { analyseRing, type Recording, type RingReport, type RingTarget } from '../audio/ring'
 import { NeedsChord } from './NeedsChord'
 import { centsColour, formatCents, lockColour } from './Meter'
+import { MIC_TEXT } from './micText'
 
 /**
  * The ring test: sing a chord at it, get told whether it rang and who broke it.
@@ -80,7 +81,7 @@ export function RingView({
       if (r.ok) return
       setError(
         r.kind === 'denied'
-          ? 'Microphone blocked. Allow it in your browser settings.'
+          ? MIC_TEXT.denied
           : (r.detail ?? 'Could not open the microphone.'),
       )
       setPhase('failed')

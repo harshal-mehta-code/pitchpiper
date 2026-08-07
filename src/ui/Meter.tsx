@@ -1,3 +1,5 @@
+import { CENTS_RANGE, IN_TUNE_CENTS } from '../audio/analyzer'
+
 /**
  * One meter, used everywhere something is measured.
  *
@@ -22,10 +24,24 @@ export interface MeterProps {
   needleRef?: React.Ref<HTMLDivElement>
 }
 
+/**
+ * The lit window, measured rather than drawn.
+ *
+ * This was `left: 44%; width: 12%` in the stylesheet — which is ±6 cents on a
+ * ±50 scale, worked out by hand and then written down as two percentages with
+ * nothing to say where they came from. It agreed with the analyser only because
+ * somebody lined it up once. Now the window *is* the lock range: widen
+ * IN_TUNE_CENTS and the light widens with it.
+ */
+const half = (IN_TUNE_CENTS / CENTS_RANGE) * 50
+
 export function Meter({ size = 'lg', ref, needleRef }: MeterProps) {
   return (
     <div className={`meter meter-${size}`} ref={ref}>
-      <span className="meter-window" />
+      <span
+        className="meter-window"
+        style={{ left: `${50 - half}%`, width: `${half * 2}%` }}
+      />
       {/* Quarter marks. Two, not six: a scale you can count is a scale you
           stop reading, and the only positions that mean anything here are the
           middle and "past the middle by a lot". */}
@@ -44,10 +60,19 @@ export function Meter({ size = 'lg', ref, needleRef }: MeterProps) {
  * hexes here, which is what they used to do in three files — so a green that
  * meant "locked" in the tuner could drift away from the green that meant it in
  * the ring report without anybody touching either one.
+ *
+ * The same argument applies to the *thresholds*, which that fix left behind: a
+ * bare `6` here decided the colour while the analyser's IN_TUNE_CENTS decided
+ * whether the meter said locked — two independent sixes, three lines apart in
+ * TuneView, either of which could have been tuned without the other. Green now
+ * means locked because it is asking the same question.
  */
+/** Past three times the lock range, a part is not close, it is wrong. */
+const WAY_OUT_CENTS = IN_TUNE_CENTS * 3
+
 export function centsColour(abs: number): string {
-  if (abs <= 6) return 'var(--good)'
-  if (abs <= 18) return 'var(--warn)'
+  if (abs <= IN_TUNE_CENTS) return 'var(--good)'
+  if (abs <= WAY_OUT_CENTS) return 'var(--warn)'
   return 'var(--bad)'
 }
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
+  CENTS_RANGE,
   IN_TUNE_CENTS,
   PitchAnalyzer,
   type AnalyzerStatus,
@@ -12,6 +13,7 @@ import type { RingTarget } from '../audio/ring'
 import { midiToLabel, ratioLabel, type ChordTone } from '../music/notes'
 import { NeedsChord } from './NeedsChord'
 import { Meter, centsColour, formatCents } from './Meter'
+import { MIC_TEXT } from './micText'
 
 /**
  * The tuner.
@@ -26,8 +28,6 @@ import { Meter, centsColour, formatCents } from './Meter'
  * readout through React state would re-render the whole view thirty times a
  * second to move one marker.
  */
-
-const CENTS_RANGE = 50
 
 /**
  * Named for what you are looking at, not for what is sounding.
@@ -69,11 +69,11 @@ export interface TuneViewProps {
 }
 
 const STATUS_TEXT: Record<AnalyzerStatus, string> = {
+  ...MIC_TEXT,
   idle: 'Not listening',
-  requesting: 'Asking for the microphone…',
+  /* Nothing. The readout below is the answer, and a status line over the top of
+     it saying "listening" is the app describing itself. */
   listening: '',
-  denied: 'Microphone blocked. Allow it in your browser settings.',
-  error: 'Microphone unavailable.',
 }
 
 export function TuneView(props: TuneViewProps) {

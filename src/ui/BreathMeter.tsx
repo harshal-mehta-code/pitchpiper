@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { BreathFrame, BreathStatus } from '../audio/breath'
+import { MIC_TEXT } from './micText'
 
 /**
  * A live picture of what the microphone is hearing.
@@ -11,13 +12,11 @@ import type { BreathFrame, BreathStatus } from '../audio/breath'
  */
 
 const STATUS_TEXT: Record<BreathStatus, string> = {
+  ...MIC_TEXT,
   idle: 'Breath off',
-  requesting: 'Asking for the microphone…',
   calibrating: 'Listening to the room — hold still',
   listening: 'Blow at the bottom of your phone',
-  denied: 'Microphone blocked. Allow it in your browser settings.',
   unsupported: 'This browser can’t reach the microphone.',
-  error: 'Microphone unavailable.',
 }
 
 export interface BreathMeterProps {
